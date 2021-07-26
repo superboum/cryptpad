@@ -189,6 +189,13 @@ module.exports = {
      * ===================== */
 
     /*
+     *
+     *
+     */
+    basePath: './data',
+
+
+    /*
      *  CryptPad stores each document in an individual file on your hard drive.
      *  Specify a directory where files should be stored.
      *  It will be created automatically if it does not already exist.

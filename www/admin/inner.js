@@ -90,13 +90,20 @@ define([
             'cp-admin-update-available',
             'cp-admin-checkup',
             'cp-admin-block-daily-check',
-            //'cp-admin-provide-aggregate-statistics',
+            'cp-admin-provide-aggregate-statistics', // XXX 4.9.0 admin
             'cp-admin-list-my-instance',
             'cp-admin-consent-to-contact',
             'cp-admin-remove-donate-button',
             'cp-admin-instance-purpose',
         ],
+        'identity': [
+            'cp-admin-instance-title',
+            'cp-admin-instance-description',
+            'cp-admin-instance-languages',
+        ],
     };
+
+    Messages.admin_cat_identity = "Identity"; // XXX 4.9.0 admin
 
     var create = {};
 
@@ -108,13 +115,16 @@ define([
         // Convert to camlCase for translation keys
         var safeKey = keyToCamlCase(key);
         var $div = $('<div>', {'class': 'cp-admin-' + key + ' cp-sidebarlayout-element'});
-        $('<label>').text(Messages['admin_'+safeKey+'Title'] || key).appendTo($div);
+        var titleKey = 'admin_'+ safeKey + 'Title';
+        $('<label>').text(Messages[titleKey] || titleKey || key).appendTo($div);
+        var hintKey = 'admin_' + safeKey + 'Hint';
         $('<span>', {'class': 'cp-sidebarlayout-description'})
-            .text(Messages['admin_'+safeKey+'Hint'] || 'Coming soon...').appendTo($div);
+            .text(Messages[hintKey] || hintKey || 'Coming soon...').appendTo($div);
         if (addButton) {
+            var buttonKey = 'admin_' + safeKey + 'Button';
             $('<button>', {
                 'class': 'btn btn-primary'
-            }).text(Messages['admin_'+safeKey+'Button'] || safeKey).appendTo($div);
+            }).text(Messages[buttonKey] || buttonKey || safeKey).appendTo($div);
         }
         return $div;
     };
@@ -1922,6 +1932,35 @@ define([
         return $div;
     };
 
+    Messages.admin_instanceTitleTitle = ''; // XXX
+    Messages.admin_instanceTitleHint = ''; // XXX
+
+    create['instance-title'] = function () { // XXX text input
+        var key = 'instance-title';
+        var $div = makeBlock(key);
+        return $div;
+    };
+
+    Messages.admin_instanceDescriptionTitle = ''; // XXX
+    Messages.admin_instanceDescriptionHint = ''; // XXX
+
+    create['instance-description'] = function () { // XXX textarea
+        var key = 'instance-description';
+        var $div = makeBlock(key);
+        return $div;
+    };
+
+    Messages.admin_instanceLanguagesTitle = ''; // XXX
+    Messages.admin_instanceLanguagesHint = ''; // XXX
+
+    // currently accomplished with
+    // AppConfig.supportLanguages = [ 'en', 'fr' ];
+    create['instance-languages'] = function () { // XXX multi-checkbox
+        var key = 'instance-languages';
+        var $div = makeBlock(key);
+        return $div;
+    };
+
     var hideCategories = function () {
         APP.$rightside.find('> div').hide();
     };
@@ -1940,6 +1979,7 @@ define([
         broadcast: 'fa fa-bullhorn',
         performance: 'fa fa-heartbeat',
         network: 'fa fa-sitemap', // or fa-university ?
+        identity: 'fa fa-address-card-o',
     };
 
     var createLeftside = function () {
@@ -1976,7 +2016,9 @@ define([
                 showCategories(categories[key]);
             });
 
-            $category.append(Messages['admin_cat_'+key] || key);
+            var sidebarKey = 'admin_cat_' + key;
+
+            $category.append(Messages[sidebarKey] || sidebarKey || key);
         });
         showCategories(categories[active]);
     };

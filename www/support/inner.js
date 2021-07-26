@@ -144,7 +144,7 @@ define([
     };
 
     create['language'] = function () {
-        if (!Array.isArray(AppConfig.supportLanguages)) { return $(h('div')); }
+        if (!Array.isArray(AppConfig.supportLanguages)) { return $(h('div')); } // XXX 4.9.0 admin
         var languages = AppConfig.supportLanguages;
 
         var list = h('span.cp-support-language-list', languages
