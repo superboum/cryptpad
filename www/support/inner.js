@@ -47,6 +47,7 @@ define([
         'new': [ // Msg.support_cat_new
             'cp-support-subscribe',
             'cp-support-language',
+            'cp-support-readfirst',
             'cp-support-form',
         ],
     };
@@ -187,11 +188,46 @@ define([
         ]));
     };
 
+    Messages.support_readfirstHint = "support_readfirstHint";
+    Messages.support_readfirstTitle = "Before submitting a ticket..."; ///"support_readfirstTitle";
+
+    Messages.support_accountDataNotice = "Support tickets automatically some data about your account to help administrators debug issues:";
+    Messages.support_showData = "View data";
+
+    create['readfirst'] = function () {
+        var key = 'readfirst';
+        var $div = makeBlock(key); // Msg.support_formHint, .support_formTitle, .support_formButton
+        $div.find('.cp-sidebarlayout-description').html(Messages.support_formHint); // XXX
+        Pages.documentationLink($div.find('a')[0], 'https://docs.cryptpad.fr/en/user_guide/index.html');
+
+        var metadataMgr = common.getMetadataMgr();
+        var user = metadataMgr.getUserData();
+        var privateData = metadataMgr.getPrivateData();
+
+        var data = APP.support.getDebuggingData({
+            channel: privateData.support,
+            curvePublic: user.curvePublic
+        });
+
+        $div.append(h('p', Messages.support_accountDataNotice));
+        var button = h('button', Messages.support_showData);
+        button.onclick = function () {
+            UI.alert(h('pre', JSON.stringify(data, null, 2)));
+        };
+
+        $div.append(button);
+
+
+
+        return $div;
+    };
+
     // Create a new tickets
     create['form'] = function () {
         var key = 'form';
         var $div = makeBlock(key, true); // Msg.support_formHint, .support_formTitle, .support_formButton
         Pages.documentationLink($div.find('a')[0], 'https://docs.cryptpad.fr/en/user_guide/index.html');
+        $div.find('.cp-sidebarlayout-description').hide(); // XXX
 
         var form = APP.support.makeForm();
 
