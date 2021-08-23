@@ -221,6 +221,8 @@ define([
                                 delete results[parsed._proof.key];
                             }
                         }
+                        // XXX If "allow edition" is disabled, don't override here?
+                        // if (data.cantEdit && results[senderCurve]) { return; }
                         results[senderCurve] = {
                             msg: parsed,
                             hash: hash,
@@ -266,14 +268,17 @@ define([
                         if (obj && obj.error) { return void cb(obj); }
                         var messages = obj.messages;
                         if (!messages.length) { return void cb(); }
+                        if (obj.lastKnownHash !== answer.hash) { return void cb(); }
                         var res = Utils.Crypto.Mailbox.openOwnSecretLetter(messages[0].msg, {
                             validateKey: data.validateKey,
                             ephemeral_private: Nacl.util.decodeBase64(answer.curvePrivate),
                             my_private: Nacl.util.decodeBase64(myKeys.curvePrivate),
                             their_public: Nacl.util.decodeBase64(data.publicKey)
                         });
-                        res.content._isAnon = answer.anonymous;
-                        cb(JSON.parse(res.content));
+                        var parsed = JSON.parse(res.content);
+                        parsed._isAnon = answer.anonymous;
+                        parsed._time = messages[0].time;
+                        cb(parsed);
                     });
 
                 });

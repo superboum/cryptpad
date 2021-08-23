@@ -1,6 +1,7 @@
 define([
     'jquery',
     'json.sortify',
+    '/api/config',
     '/bower_components/chainpad-crypto/crypto.js',
     '/common/sframe-app-framework.js',
     '/common/toolbar.js',
@@ -42,6 +43,7 @@ define([
 ], function (
     $,
     Sortify,
+    ApiConfig,
     Crypto,
     Framework,
     Toolbar,
@@ -66,6 +68,7 @@ define([
     )
 {
     var APP = window.APP = {
+        blocks: {}
     };
 
     var is24h = UIElements.is24h();
@@ -1016,12 +1019,17 @@ define([
                 var setCursorGetter = function (f) { cursorGetter = f; };
                 return {
                     tag: tag,
+                    isEmpty: function () { return !$tag.val().trim(); },
                     getValue: function () {
                         //var invalid = $tag.is(':invalid');
                         //if (invalid) { return; }
                         return $tag.val();
                     },
                     setValue: function (val) { $tag.val(val); },
+                    setEditable: function (state) {
+                        if (state) { $tag.removeAttr('disabled'); }
+                        else { $tag.attr('disabled', 'disabled'); }
+                    },
                     edit: function (cb, tmp) {
                         var v = Util.clone(opts);
                         return editTextOptions(v, setCursorGetter, cb, tmp);
@@ -1100,10 +1108,15 @@ define([
                 var setCursorGetter = function (f) { cursorGetter = f; };
                 return {
                     tag: tag,
+                    isEmpty: function () { return !$text.val().trim(); },
                     getValue: function () { return $text.val().slice(0, opts.maxLength); },
                     setValue: function (val) {
                         $text.val(val);
                         updateChar();
+                    },
+                    setEditable: function (state) {
+                        if (state) { $(tag).removeAttr('disabled'); }
+                        else { $(tag).attr('disabled', 'disabled'); }
                     },
                     edit: function (cb, tmp) {
                         var v = Util.clone(opts);
@@ -1129,6 +1142,7 @@ define([
             icon: h('i.cptools.cptools-form-paragraph')
         },
         radio: {
+            compatible: ['radio', 'checkbox', 'sort'],
             defaultOpts: {
                 values: [1,2].map(function (i) {
                     return Messages._getKey('form_defaultOption', [i]);
@@ -1152,6 +1166,7 @@ define([
                 });
                 return {
                     tag: tag,
+                    isEmpty: function () { return !this.getValue(); },
                     getValue: function () {
                         var res;
                         els.some(function (el) {
@@ -1164,6 +1179,10 @@ define([
                         return res;
                     },
                     reset: function () { $(tag).find('input').removeAttr('checked'); },
+                    setEditable: function (state) {
+                        if (state) { $(tag).find('input').removeAttr('disabled'); }
+                        else { $(tag).find('input').attr('disabled', 'disabled'); }
+                    },
                     edit: function (cb, tmp) {
                         var v = Util.clone(opts);
                         return editOptions(v, setCursorGetter, cb, tmp);
@@ -1200,6 +1219,7 @@ define([
             icon: h('i.cptools.cptools-form-list-radio')
         },
         multiradio: {
+            compatible: ['multiradio', 'multicheck'],
             defaultOpts: {
                 items: [1,2].map(function (i) {
                     return {
@@ -1234,11 +1254,18 @@ define([
                 var tag = h('div.radio-group.cp-form-type-multiradio', lines);
                 var cursorGetter;
                 var setCursorGetter = function (f) { cursorGetter = f; };
-                $(tag).find('input[type="radio"]').on('change', function () {
+                var $tag = $(tag);
+                $tag.find('input[type="radio"]').on('change', function () {
                     evOnChange.fire();
                 });
                 return {
                     tag: tag,
+                    isEmpty: function () {
+                        var v = this.getValue();
+                        return !Object.keys(v).length || Object.keys(v).some(function (uid) {
+                            return !v[uid];
+                        });
+                    },
                     getValue: function () {
                         var res = {};
                         var l = lines.slice(1);
@@ -1254,6 +1281,10 @@ define([
                         return res;
                     },
                     reset: function () { $(tag).find('input').removeAttr('checked'); },
+                    setEditable: function (state) {
+                        if (state) { $tag.find('input').removeAttr('disabled'); }
+                        else { $tag.find('input').attr('disabled', 'disabled'); }
+                    },
                     edit: function (cb, tmp) {
                         var v = Util.clone(opts);
                         return editOptions(v, setCursorGetter, cb, tmp);
@@ -1330,6 +1361,7 @@ define([
             icon: h('i.cptools.cptools-form-grid-radio')
         },
         checkbox: {
+            compatible: ['radio', 'checkbox', 'sort'],
             defaultOpts: {
                 max: 3,
                 values: [1, 2, 3].map(function (i) {
@@ -1346,24 +1378,32 @@ define([
                     $(cbox).find('input').data('val', data);
                     return cbox;
                 });
+                if (!opts.max) { opts.max = TYPES.checkbox.defaultOpts.max; }
                 var tag = h('div', [
                     h('div.cp-form-max-options', Messages._getKey('form_maxOptions', [opts.max])),
                     h('div.radio-group.cp-form-type-checkbox', els)
                 ]);
                 var $tag = $(tag);
-                $tag.find('input').on('change', function () {
+                var checkDisabled = function () {
                     var selected = $tag.find('input:checked').length;
                     if (selected >= opts.max) {
                         $tag.find('input:not(:checked)').attr('disabled', 'disabled');
                     } else {
                         $tag.find('input').removeAttr('disabled');
                     }
+                };
+                $tag.find('input').on('change', function () {
+                    checkDisabled();
                     evOnChange.fire();
                 });
                 var cursorGetter;
                 var setCursorGetter = function (f) { cursorGetter = f; };
                 return {
                     tag: tag,
+                    isEmpty: function () {
+                        var v = this.getValue();
+                        return !v.length;
+                    },
                     getValue: function () {
                         var res = [];
                         els.forEach(function (el) {
@@ -1375,6 +1415,10 @@ define([
                         return res;
                     },
                     reset: function () { $(tag).find('input').removeAttr('checked'); },
+                    setEditable: function (state) {
+                        if (state) { checkDisabled(); }
+                        else { $tag.find('input').attr('disabled', 'disabled'); }
+                    },
                     edit: function (cb, tmp) {
                         var v = Util.clone(opts);
                         return editOptions(v, setCursorGetter, cb, tmp);
@@ -1389,6 +1433,7 @@ define([
                                 $el.prop('checked', true);
                             }
                         });
+                        checkDisabled();
                     }
                 };
 
@@ -1413,6 +1458,7 @@ define([
             icon: h('i.cptools.cptools-form-list-check')
         },
         multicheck: {
+            compatible: ['multiradio', 'multicheck'],
             defaultOpts: {
                 max: 3,
                 items: [1,2].map(function (i) {
@@ -1442,14 +1488,20 @@ define([
                     return h('div.radio-group', {'data-uid':name}, els);
                 });
 
+                if (!opts.max) { opts.max = TYPES.multicheck.defaultOpts.max; }
+
+                var checkDisabled = function (l) {
+                    var selected = $(l).find('input:checked').length;
+                    if (selected >= opts.max) {
+                        $(l).find('input:not(:checked)').attr('disabled', 'disabled');
+                    } else {
+                        $(l).find('input').removeAttr('disabled');
+                    }
+                };
+
                 lines.forEach(function (l) {
                     $(l).find('input').on('change', function () {
-                        var selected = $(l).find('input:checked').length;
-                        if (selected >= opts.max) {
-                            $(l).find('input:not(:checked)').attr('disabled', 'disabled');
-                        } else {
-                            $(l).find('input').removeAttr('disabled');
-                        }
+                        checkDisabled(l);
                         evOnChange.fire();
                     });
                 });
@@ -1463,6 +1515,12 @@ define([
                 var setCursorGetter = function (f) { cursorGetter = f; };
                 return {
                     tag: tag,
+                    isEmpty: function () {
+                        var v = this.getValue();
+                        return Object.keys(v).some(function (uid) {
+                            return !v[uid].length;
+                        });
+                    },
                     getValue: function () {
                         var res = {};
                         var l = lines.slice(1);
@@ -1478,6 +1536,10 @@ define([
                         return res;
                     },
                     reset: function () { $(tag).find('input').removeAttr('checked'); },
+                    setEditable: function (state) {
+                        if (state) { lines.forEach(checkDisabled); }
+                        else { $(tag).find('input').attr('disabled', 'disabled'); }
+                    },
                     edit: function (cb, tmp) {
                         var v = Util.clone(opts);
                         return editOptions(v, setCursorGetter, cb, tmp);
@@ -1492,6 +1554,7 @@ define([
                                 $(el).prop('checked', true);
                             });
                         });
+                        lines.forEach(checkDisabled);
                     }
                 };
 
@@ -1565,6 +1628,7 @@ define([
             icon: h('i.cptools.cptools-form-grid-check')
         },
         sort: {
+            compatible: ['radio', 'checkbox', 'sort'],
             defaultOpts: {
                 values: [1,2].map(function (i) {
                     return Messages._getKey('form_defaultOption', [i]);
@@ -1621,17 +1685,14 @@ define([
                     forceFallback: true,
                     store: {
                         set: function () {
-                            evOnChange.fire();
                             reorder();
+                            evOnChange.fire();
                         }
                     }
                 });
-
-                $(tag).find('input[type="radio"]').on('change', function () {
-                    evOnChange.fire();
-                });
                 return {
                     tag: tag,
+                    isEmpty: function () { return !this.getValue(); },
                     getValue: function () {
                         if (!sorted) { return; }
                         return sortable.toArray().map(function (id) {
@@ -1645,6 +1706,10 @@ define([
                         });
                         sortable.sort(toSort);
                         reorder(true);
+                    },
+                    setEditable: function (state) {
+                        sortable.options.disabled = !state;
+                        $(tag).toggleClass('cp-form-disabled', !state);
                     },
                     edit: function (cb, tmp) {
                         var v = Util.clone(opts);
@@ -1696,6 +1761,7 @@ define([
 
                 var lines = makePollTable(answers, opts, false);
 
+                var disabled = false;
                 // Add form
                 var addLine = opts.values.map(function (data) {
                     var cell = h('div.cp-poll-cell.cp-form-poll-choice', [
@@ -1708,6 +1774,7 @@ define([
                     var val = 0;
                     $c.attr('data-value', val);
                     $c.click(function () {
+                        if (disabled) { return; }
                         val = (val+1)%3;
                         $c.attr('data-value', val);
                         evOnChange.fire();
@@ -1759,6 +1826,10 @@ define([
                     },
                     reset: function () {
                         $tag.find('.cp-form-poll-choice').attr('data-value', 0);
+                    },
+                    setEditable: function (state) {
+                        disabled = !state;
+                        $tag.toggleClass('cp-form-disabled', disabled);
                     },
                     edit: function (cb, tmp) {
                         var v = Util.clone(opts);
@@ -2084,6 +2155,44 @@ define([
         framework._.toolbar.$bottomL.append($res);
     };
 
+    Messages.form_alreadyAnswered = "You've responded to this form on {0}"; // XXX
+    Messages.form_editAnswer = "Edit my responses"; // XXX
+    Messages.form_viewAnswer = "View my responses"; // XXX
+    var showAnsweredPage = function (framework, content, answers) {
+        var $formContainer = $('div.cp-form-creator-content').hide();
+        var $container = $('div.cp-form-creator-answered').empty().css('display', '');
+
+        var viewOnly = content.answers.cantEdit;
+        var action = h('button.btn.btn-primary', [
+            viewOnly ? h('i.fa.fa-bar-chart') : h('i.fa.fa-pencil'),
+            h('span', viewOnly ? Messages.form_viewAnswer : Messages.form_editAnswer)
+        ]);
+
+        $(action).click(function () {
+            $formContainer.css('display', '');
+            $container.hide();
+            if (viewOnly) {
+                $formContainer.find('.cp-form-send-container .cp-open').hide();
+                if (Array.isArray(APP.formBlocks)) {
+                    APP.formBlocks.forEach(function (b) {
+                        if (!b.setEditable) { return; }
+                        b.setEditable(false);
+                    });
+                }
+            }
+        });
+
+        if (answers._time) { APP.lastAnswerTime = answers._time; }
+
+        var title = framework._.title.title || framework._.title.defaultTitle;
+        $container.append(h('div.cp-form-submit-success', [
+            h('h3.cp-form-view-title', title),
+            h('div.alert.alert-info', Messages._getKey('form_alreadyAnswered', [
+                    new Date(APP.lastAnswerTime).toLocaleString()])),
+            action
+        ]));
+    };
+
     var getFormResults = function () {
         if (!Array.isArray(APP.formBlocks)) { return; }
         var results = {};
@@ -2132,6 +2241,7 @@ define([
                 if (typeof(data.reset) === "function") { data.reset(); }
             });
             $(reset).attr('disabled', 'disabled');
+            evOnChange.fire();
         });
         var $send = $(send).click(function () {
             $send.attr('disabled', 'disabled');
@@ -2172,8 +2282,9 @@ define([
                     addResultsButton(framework, content);
                 }
                 $send.removeAttr('disabled');
-                UI.alert(Messages.form_sent);
+                //UI.alert(Messages.form_sent); // XXX not needed anymore?
                 $send.text(Messages.form_update);
+                showAnsweredPage(framework, content, { '_time': +new Date() });
             });
         });
 
@@ -2182,6 +2293,9 @@ define([
             reset = undefined;
         }
 
+        Messages.form_requiredWarning = "These questions need an answer:"; // XXX
+        var errors = h('div.cp-form-invalid-warning');
+        var $errors = $(errors);
         var invalid = h('div.cp-form-invalid-warning');
         var $invalid = $(invalid);
         if (evOnChange) {
@@ -2190,7 +2304,28 @@ define([
                 priv = metadataMgr.getPrivateData();
                 origin = priv.origin;
             }
-            evOnChange.reg(function () {
+
+            var gotoQuestion = function (el) {
+                var $el = $(el).closest('.cp-form-block');
+                var number = $el.find('.cp-form-block-question-number').text();
+                var a = h('a', {
+                    href: origin + '#' + Messages._getKey('form_invalidQuestion', [number])
+                }, Messages._getKey('form_invalidQuestion', [number]));
+                $(a).click(function (e) {
+                    e.preventDefault();
+                    if (!$el.is(':visible')) {
+                        var pages = $el.closest('.cp-form-page').index();
+                        if (APP.refreshPage) { APP.refreshPage(pages + 1); }
+                    }
+                    $el[0].scrollIntoView();
+                });
+                return h('li', a);
+            };
+
+            if (APP.checkInvalidEvt) { evOnChange.unreg(APP.checkInvalidEvt); }
+            if (APP.checkErrorEvt) { evOnChange.unreg(APP.checkErrorEvt); }
+            // Check invalid inputs
+            APP.checkInvalidEvt = function () {
                 var $container = $('div.cp-form-creator-content');
                 var $inputs = $container.find('input:invalid');
                 if (!$inputs.length) {
@@ -2200,21 +2335,7 @@ define([
                 $send.text(update ? Messages.form_updateWarning : Messages.form_submitWarning);
                 var lis = [];
                 $inputs.each(function (i, el) {
-                    var $el = $(el).closest('.cp-form-block');
-                    var number = $el.find('.cp-form-block-question-number').text();
-                    var a = h('a', {
-                        href: origin + '#' + Messages._getKey('form_invalidQuestion', [number])
-                    }, Messages._getKey('form_invalidQuestion', [number]));
-                    $(a).click(function (e) {
-                        e.preventDefault();
-                        if (!$el.is(':visible')) {
-                            var pages = $el.closest('.cp-form-page').index();
-                            if (APP.refreshPage) { APP.refreshPage(pages + 1); }
-                        }
-                        $el[0].scrollIntoView();
-                    });
-                    var li = h('li', a);
-                    lis.push(li);
+                    lis.push(gotoQuestion(el));
                 });
                 var list = h('ul', lis);
                 var content = [
@@ -2222,12 +2343,47 @@ define([
                     list
                 ];
                 $invalid.empty().append(content);
-            });
+            };
+            // Check empty required questions
+            APP.checkErrorEvt = function () {
+                if (!Array.isArray(APP.formBlocks)) { return; }
+                var form = content.form;
+                var errorBlocks = APP.formBlocks.filter(function (data) {
+                    var uid = data.uid;
+                    var block = form[uid];
+                    if (!data.isEmpty) { return; }
+                    if (!block) { return; }
+                    if (!block.opts || !block.opts.required) { return; }
+                    console.error(data.getValue());
+                    var isEmpty = data.isEmpty();
+                    var $el = $(data.tag).closest('.cp-form-block');
+                    $el.find('.cp-form-required-tag').toggleClass('cp-is-empty', isEmpty);
+                    return isEmpty;
+                });
+                if (!errorBlocks.length) {
+                    $send.removeAttr('disabled');
+                    return void $errors.empty();
+                }
+                $send.attr('disabled', 'disabled');
+                var lis = [];
+                errorBlocks.forEach(function (data) {
+                    lis.push(gotoQuestion(data.tag));
+                });
+                var list = h('ul', lis);
+                var divContent = [
+                    h('span', Messages.form_requiredWarning),
+                    list
+                ];
+                $errors.empty().append(divContent);
+            };
+            evOnChange.reg(APP.checkInvalidEvt);
+            evOnChange.reg(APP.checkErrorEvt);
             evOnChange.fire(true);
         }
 
         return h('div.cp-form-send-container', [
             invalid,
+            errors,
             cbox ? h('div.cp-form-anon-answer', [
                         cbox,
                         anonName
@@ -2381,10 +2537,17 @@ define([
             }
 
 
+            Messages.form_required = "Required"; // XXX
+            var requiredTag;
+            if (block.opts && block.opts.required) {
+                requiredTag = h('span.cp-form-required-tag', Messages.form_required);
+            }
+
             var dragHandle;
             var q = h('div.cp-form-block-question', [
                 h('span.cp-form-block-question-number', (n++)+'.'),
-                h('span', block.q || Messages.form_default)
+                h('span.cp-form-block-question-text', block.q || Messages.form_default),
+                requiredTag
             ]);
             // Static blocks don't have questions ("q" is not used) so we can decrement n
             if (isStatic) { n--; }
@@ -2392,6 +2555,41 @@ define([
             var editButtons, editContainer;
 
             APP.formBlocks.push(data);
+
+            Messages.form_preview = "Preview:"; // XXX
+            var previewDiv = h('div.cp-form-preview', Messages.form_preview);
+
+            Messages.form_required_on = "Required answer";
+            Messages.form_required_off = "Optional answer";
+            // Required radio displayed only for types that have an "isEmpty" function
+            var requiredDiv;
+            if (APP.isEditor && !isStatic && data.isEmpty) {
+                if (!block.opts) { block.opts = {}; }
+                var isRequired = Boolean(block.opts.required);
+                var radioOn = UI.createRadio('cp-form-required-'+uid, 'cp-form-required-on',
+                        Messages.form_required_on, isRequired, {
+                            input: { value: 1 },
+                            mark: { tabindex:1 }
+                        });
+                var radioOff = UI.createRadio('cp-form-required-'+uid, 'cp-form-required-off',
+                        Messages.form_required_off, !isRequired, {
+                            input: { value: 0 },
+                            mark: { tabindex:1 }
+                        });
+                var radioContainer = h('div.cp-form-required-radio', [radioOn, radioOff]);
+                requiredDiv = h('div.cp-form-required', [
+                    radioContainer
+                ]);
+                $(radioContainer).find('input[type="radio"]').on('change', function() {
+                    var val = $('input:radio[name="cp-form-required-'+uid+'"]:checked').val();
+                    val = Number(val) || 0;
+                    block.opts.required = Boolean(val);
+                    framework.localChange();
+                    framework._.cpNfInner.chainpad.onSettle(function () {
+                        UI.log(Messages.saved);
+                    });
+                });
+            }
 
             if (editable) {
                 // Drag handle
@@ -2450,6 +2648,7 @@ define([
 
                 // Delete question
                 var edit = h('span');
+                var changeType;
                 var del = h('button.btn.btn-danger-alt', [
                     h('i.fa.fa-trash-o'),
                     h('span', Messages.form_delete)
@@ -2479,6 +2678,8 @@ define([
                             $(editContainer).empty();
                             $(editButtons).show();
                             $(data.tag).show();
+                            $(previewDiv).show();
+                            $(requiredDiv).show();
                             return;
                         }
                         $(editContainer).empty();
@@ -2487,6 +2688,8 @@ define([
                         var $oldTag = $(data.tag);
                         framework._.cpNfInner.chainpad.onSettle(function () {
                             $(editButtons).show();
+                            $(previewDiv).show();
+                            $(requiredDiv).show();
                             UI.log(Messages.saved);
                             _answers = getBlockAnswers(APP.answers, uid);
                             data = model.get(newOpts, _answers, null, evOnChange);
@@ -2496,6 +2699,8 @@ define([
                     };
                     var onEdit = function (tmp) {
                         data.editing = true;
+                        $(requiredDiv).hide();
+                        $(previewDiv).hide();
                         $(data.tag).hide();
                         $(editContainer).append(data.edit(onSave, tmp, framework));
                         $(editButtons).hide();
@@ -2510,10 +2715,57 @@ define([
                             onEdit(temp[uid]);
                         });
                     }
+
+                    Messages.form_changeType = "Change type"; // XXX
+                    Messages.form_changeTypeConfirm = "Select the new type of this question and click OK."; // XXX
+                    if (Array.isArray(model.compatible)) {
+                        changeType = h('button.btn.btn-secondary', [
+                            h('i.fa.fa-question'),
+                            h('span', Messages.form_changeType)
+                        ]);
+                        $(changeType).click(function () {
+                            var name = Util.uid();
+                            var els = model.compatible.map(function (data, i) {
+                                var text = Messages['form_type_'+data];
+                                if (!text) { return; }
+                                var radio = UI.createRadio(name, 'cp-form-changetype-'+i,
+                                           text, data===type, { mark: { tabindex:1 } });
+                                $(radio).find('input').data('val', data);
+                                return radio;
+                            });
+                            var tag = h('div.radio-group', els);
+                            var changeTypeContent = [
+                                h('p', Messages.form_changeTypeConfirm),
+                                tag
+                            ];
+                            UI.confirm(changeTypeContent, function (yes) {
+                                if (!yes) { return; }
+                                var res;
+                                els.some(function (el) {
+                                    var $i = $(el).find('input');
+                                    if (Util.isChecked($i)) {
+                                        res = $i.data('val');
+                                        return true;
+                                    }
+                                });
+                                if (res === type || !TYPES[res]) { return; }
+                                model = TYPES[res];
+                                type = res;
+                                if (!data) { data = {}; }
+                                block.type = res;
+                                framework.localChange();
+                                var $oldTag = $(data.tag);
+                                framework._.cpNfInner.chainpad.onSettle(function () {
+                                    data = model.get(block.opts, _answers, null, evOnChange);
+                                    $oldTag.before(data.tag).remove();
+                                });
+                            });
+                        });
+                    }
                 }
 
                 editButtons = h('div.cp-form-edit-buttons-container', [
-                    edit, del
+                    edit, changeType, del
                 ]);
             }
             var editableCls = editable ? ".editable" : "";
@@ -2523,6 +2775,8 @@ define([
                 APP.isEditor ? dragHandle : undefined,
                 isStatic ? undefined : q,
                 h('div.cp-form-block-content', [
+                    APP.isEditor && !isStatic ? requiredDiv : undefined,
+                    APP.isEditor && !isStatic ? previewDiv : undefined,
                     data.tag,
                     editButtons
                 ]),
@@ -2613,8 +2867,33 @@ define([
             return;
         }
 
+        // If the form is already submitted, show an info message
+        if (answers) {
+            showAnsweredPage(framework, content, answers);
+            $container.prepend(h('div.alert.alert-info',
+                Messages._getKey('form_alreadyAnswered', [
+                    new Date(answers._time || APP.lastAnswerTime).toLocaleString()])));
+        }
+
         // In view mode, add "Submit" and "reset" buttons
         $container.append(makeFormControls(framework, content, Boolean(answers), evOnChange));
+
+        // Embed mode is enforced so we add the title at the top and a CryptPad logo
+        // at the bottom
+        var title = framework._.title.title || framework._.title.defaultTitle;
+        $container.prepend(h('h1.cp-form-view-title', title));
+        var logo = h('div.cp-form-view-logo', [
+            h('img', {
+                src:'/customize/CryptPad_logo_grey.svg?'+ApiConfig.requireConf.urlArgs,
+                alt:'CryptPad_logo'
+            }),
+            h('span', 'CryptPad')
+        ]);
+        $(logo).click(function () {
+            framework._.sfCommon.gotoURL('/drive/');
+        });
+        $container.append(logo);
+
         if (!answers) {
             $container.find('.cp-reset-button').attr('disabled', 'disabled');
         }
@@ -2678,6 +2957,22 @@ define([
         }
 
         var makeFormSettings = function () {
+            Messages.form_preview = "Preview participant page"; // XXX
+            Messages.form_geturl = "Copy participant link"; // XXX
+            var previewBtn = h('button.btn.btn-primary', Messages.form_preview);
+            var participantBtn = h('button.btn.btn-primary', Messages.form_geturl);
+            var preview = h('div.cp-forms-results-participant', [previewBtn, participantBtn]);
+            $(previewBtn).click(function () {
+                sframeChan.event('EV_OPEN_VIEW_URL');
+            });
+            $(participantBtn).click(function () {
+                sframeChan.query('Q_COPY_VIEW_URL', null, function (err, success) {
+                    if (success) { return void UI.log(Messages.shareSuccess); }
+                    UI.warn(Messages.error);
+                });
+            });
+
+
             // Private / public status
             var resultsType = h('div.cp-form-results-type-container');
             var $results = $(resultsType);
@@ -2812,6 +3107,38 @@ define([
             };
             refreshPrivacy();
 
+            // Allow responses edition
+            Messages.form_editable = "Allow users to edit their responses"; // XXX
+            var editableContainer = h('div.cp-form-editable-container');
+            var $editable = $(editableContainer);
+            var refreshEditable = function () {
+                $editable.empty();
+                var editable = !content.answers.cantEdit;
+                var radioOn = UI.createRadio('cp-form-editable', 'cp-form-editable-on',
+                        Messages.form_anonymous_on, Boolean(editable), {
+                            input: { value: 1 },
+                            mark: { tabindex:1 }
+                        });
+                var radioOff = UI.createRadio('cp-form-editable', 'cp-form-editable-off',
+                        Messages.form_anonymous_off, !editable, {
+                            input: { value: 0 },
+                            mark: { tabindex:1 }
+                        });
+                var radioContainer = h('div.cp-form-editable-radio', [radioOn, radioOff]);
+                $(radioContainer).find('input[type="radio"]').on('change', function() {
+                    var val = $('input:radio[name="cp-form-editable"]:checked').val();
+                    val = Number(val) || 0;
+                    content.answers.cantEdit = !val;
+                    framework.localChange();
+                    framework._.cpNfInner.chainpad.onSettle(function () {
+                        UI.log(Messages.saved);
+                    });
+                });
+                $editable.append(h('div.cp-form-status', Messages.form_editable));
+                $editable.append(h('div.cp-form-actions', radioContainer));
+            };
+            refreshEditable();
+
             // End date / Closed state
             var endDateContainer = h('div.cp-form-status-container');
             var $endDate = $(endDateContainer);
@@ -2875,12 +3202,15 @@ define([
 
             evOnChange.reg(refreshPublic);
             evOnChange.reg(refreshPrivacy);
+            evOnChange.reg(refreshEditable);
             evOnChange.reg(refreshEndDate);
             //evOnChange.reg(refreshResponse);
 
             return [
+                preview,
                 endDateContainer,
                 privacyContainer,
+                editableContainer,
                 resultsType,
                 responseMsg
             ];
@@ -2922,10 +3252,14 @@ define([
 
             var contentContainer = h('div.cp-form-creator-content');
             var resultsContainer = h('div.cp-form-creator-results');
+            var answeredContainer = h('div.cp-form-creator-answered', {
+                style: 'display: none;'
+            });
             var div = h('div.cp-form-creator-container', [
                 controlContainer,
                 contentContainer,
                 resultsContainer,
+                answeredContainer,
                 fillerContainer
             ]);
             return div;
@@ -3027,7 +3361,8 @@ define([
                     channel: content.answers.channel,
                     validateKey: content.answers.validateKey,
                     publicKey: content.answers.publicKey,
-                    privateKey: key
+                    privateKey: key,
+                    cantEdit: content.answers.cantEdit
                 }, function (err, obj) {
                     var answers = obj && obj.results;
                     if (answers) { APP.answers = answers; }
@@ -3046,7 +3381,8 @@ define([
                 sframeChan.query("Q_FORM_FETCH_ANSWERS", {
                     channel: content.answers.channel,
                     validateKey: content.answers.validateKey,
-                    publicKey: content.answers.publicKey
+                    publicKey: content.answers.publicKey,
+                    cantEdit: content.answers.cantEdit
                 }, function (err, obj) {
                     var answers = obj && obj.results;
                     if (answers) { APP.answers = answers; }
@@ -3064,7 +3400,7 @@ define([
             }
 
             // If the results are public and there is at least one doodle, fetch the results now
-            if (content.answers.privateKey && Object.keys(content.form).some(function (uid) {
+            if (0 && content.answers.privateKey && Object.keys(content.form).some(function (uid) {
                     return content.form[uid].type === "poll";
                 })) {
                 sframeChan.query("Q_FORM_FETCH_ANSWERS", {
@@ -3072,6 +3408,7 @@ define([
                     validateKey: content.answers.validateKey,
                     publicKey: content.answers.publicKey,
                     privateKey: content.answers.privateKey,
+                    cantEdit: content.answers.cantEdit
                 }, function (err, obj) {
                     var answers = obj && obj.results;
                     if (answers) { APP.answers = answers; }
@@ -3094,6 +3431,7 @@ define([
                         var myAnswersObj = answers[curve1] || answers[curve2] || undefined;
                         if (myAnswersObj) {
                             myAnswers = myAnswersObj.msg;
+                            myAnswers._time = myAnswersObj.time;
                         }
                     }
                     // If we have a non-anon answer, we can't answer anonymously later

@@ -78,6 +78,26 @@
             display: flex;
         }
 
+        .cp-form-view-title {
+            margin-bottom: 20px;
+        }
+        div.cp-form-view-logo {
+            align-items: center;
+            justify-content: center;
+            max-height: 140px;
+            font-size: 50px;
+            display: flex;
+            font-family: "IBM Plex Mono";
+            .tools_unselectable();
+            color: @cp_sidebar-hint;
+            padding: 20px;
+            cursor: pointer;
+            img {
+                max-height: 100%;
+                margin-right: 20px;
+            }
+        }
+
         div.cp-form-creator-container {
             display: flex;
             flex: 1;
@@ -106,6 +126,10 @@
                 }
                 & > div:not(:last-child) {
                     margin-bottom: 20px;
+                }
+                .cp-forms-results-participant {
+                    display: flex;
+                    flex-flow: column;
                 }
             }
             div.cp-form-filler-container {
@@ -293,6 +317,20 @@
                         margin-bottom: 20px;
                     }
 
+                    .cp-form-disabled {
+                        .cp-form-poll-choice, .cp-form-type-sort {
+                            cursor: not-allowed !important;
+                        }
+                    }
+
+                    .cp-form-preview {
+                        color: @cp_sidebar-hint;
+                        margin-bottom: 10px;
+                        padding: 0;
+                        text-align: center;
+                        font-weight: bold;
+                    }
+
                     .cp-form-block-drag-handle {
                         display: flex;
                         flex-flow: column;
@@ -318,9 +356,24 @@
 
                     .cp-form-block-question {
                         margin-bottom: 5px;
+                        display: flex;
                         .cp-form-block-question-number {
                             font-weight: bold;
                             margin-right: 10px;
+                        }
+                        .cp-form-block-question-text {
+                            flex: 1;
+                        }
+                        .cp-form-required-tag {
+                            background: fade(@cryptpad_text_col, 15%);
+                            padding: 5px;
+                            margin-top: -10px;
+                            margin-right: -10px;
+                            &.cp-is-empty {
+                                padding: 3px;
+                                border: 2px solid @cryptpad_color_red;
+                                color: @cp_form-invalid;
+                            }
                         }
                     }
                     .cp-form-block-content {
@@ -474,6 +527,12 @@
                 }
             }
         }
+        div.cp-form-creator-answered {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+        }
         div.cp-form-creator-results {
             display: flex;
             flex-flow: column;
@@ -504,8 +563,8 @@
             .cp-form-creator-results-content {
                 padding-bottom: 100px;
                 .cp-form-block {
-                        background: @cp_form-bg1;
-                        padding: 10px;
+                    background: @cp_form-bg1;
+                    padding: 10px;
                 }
             }
             .cp-form-block-question {
