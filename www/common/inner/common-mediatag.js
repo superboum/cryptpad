@@ -43,9 +43,15 @@ define([
         });
     };
 
+    var animal_avatars = {};
     MT.getCursorAvatar = function (cursor) {
+        var uid = cursor.uid;
         var html = '<span class="cp-cursor-avatar">';
-        html += (cursor.avatar && avatars[cursor.avatar]) || '';
+        if (cursor.avatar && avatars[cursor.avatar]) {
+            html += (cursor.avatar && avatars[cursor.avatar]) || '';
+        } else if (animal_avatars[uid]) {
+            html += animal_avatars[uid] + ' ';
+        }
         html += Util.fixHTML(cursor.name) + '</span>';
         return html;
     };
@@ -94,7 +100,21 @@ define([
         return ANIMALS[seed % ANIMALS.length];
     };
 
-    var animal_avatars = {};
+    var getPrettyInitials = function (name) {
+        var parts = name.split(/\s+/);
+        var text;
+        if (parts.length > 1) {
+            text = parts.slice(0, 2).map(Util.getFirstCharacter).join('');
+        } else {
+            text = Util.getFirstCharacter(name);
+            var second = Util.getFirstCharacter(name.replace(text, ''));
+            if (second && second !== '?') {
+                text += second;
+            }
+        }
+        return text;
+    };
+
     MT.displayAvatar = function (common, $container, href, name, _cb, uid) {
         var cb = Util.once(Util.mkAsync(_cb || function () {}));
         var displayDefault = function () {
@@ -105,23 +125,24 @@ define([
             var animal = false;
 
             name = (name || "").trim() || Messages.anonymous;
-            var parts = name.split(/\s+/);
             var text;
-            if (name === Messages.anonymous) {
+            if (name === Messages.anonymous && uid) {
                 if (animal_avatar) {
                     text = animal_avatar;
                 } else {
                     text = animal_avatar = getPseudorandomAnimal(uid);
                 }
                 animal = true;
-            } else if (parts.length > 1) {
-                text = parts.slice(0, 2).map(Util.getFirstCharacter).join('');
             } else {
-                text = Util.getFirstCharacter(name);
-                text += Util.getFirstCharacter(name.replace(text, ''));
+                text = getPrettyInitials(name);
             }
 
-            var $avatar = $('<span>', {'class': 'cp-avatar-default' + (animal? ' animal': '')}).text(text);
+            var $avatar = $('<span>', {
+                'class': 'cp-avatar-default' + (animal? ' animal': ''),
+                // XXX prevents screenreaders from trying to describe this
+                alt: '',
+                'aria-hidden': true,
+            }).text(text);
             $container.append($avatar);
             if (uid && animal) {
                 animal_avatars[uid] = animal_avatar;
@@ -173,7 +194,7 @@ define([
                 var $img = $(mt).appendTo($container);
                 MT.displayMediatagImage(common, $img, function (err, $image) {
                     if (err) { return void console.error(err); }
-                    centerImage($img, $image);
+                    centerImage($img, $image); // XXX add alt="" (unless the media-tag has an alt attr)
                 });
             });
         }

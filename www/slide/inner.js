@@ -459,7 +459,9 @@ define([
     var andThen2 = function (editor, CodeMirror, framework, isPresentMode) {
 
         var common = framework._.sfCommon;
-        var privateData = common.getMetadataMgr().getPrivateData();
+        var metadataMgr = common.getMetadataMgr();
+        var privateData = metadataMgr.getPrivateData();
+        CodeMirror.uid = metadataMgr.getUserData().uid;
 
         var $contentContainer = $('#cp-app-slide-editor');
         var $modal = $('#cp-app-slide-modal');
@@ -511,7 +513,7 @@ define([
                 framework.updateCursor();
             }, 500); // 500ms to make sure it is sent after chainpad sync
         };
-        framework.onCursorUpdate(CodeMirror.setRemoteCursor);
+        framework.onCursorUpdate(CodeMirror.setRemoteCursor); // XXX
         framework.setCursorGetter(CodeMirror.getCursor);
         editor.on('cursorActivity', updateCursor);
 
