@@ -37,18 +37,20 @@ define([
         $(el).remove();
     };
 
-    Cursor.create = function (inner, hjsonToDom, cursorModule, uid) {
+    Cursor.create = function (inner, hjsonToDom, cursorModule) {
         var exp = {};
 
         var cursors = {};
 
-    // XXX despite the name of this function this doesn't actually render as a tippy tooltip
+    // FIXME despite the name of this function this doesn't actually render as a tippy tooltip
     // that means that emojis will use the system font that shows up in native tooltips
     // so this might be of limited value/aesthetic appeal compared to other apps' cursors
         var makeTippy = function (cursor) {
-            //return cursor.name;
             if (typeof(cursor.uid) === 'string' && (!cursor.name || cursor.name === Messages.anonymous)) {
-                return MT.getPseudorandomAnimal(cursor.uid) + ' ' + Messages.anonymous;
+                var animal = MT.getPseudorandomAnimal(cursor.uid);
+                if (animal) {
+                    return animal + ' ' + Messages.anonymous;
+                }
             }
             return cursor.name || Messages.anonymous;
         };
@@ -147,12 +149,6 @@ define([
             var cursorObj = data.cursor;
 
             if (!cursorObj.selectionStart) { return; }
-            if (cursorObj.name === Messages.anonymous) {
-                // save a little bit of data from going over the wire...
-                // remote clients will interpret this as Messages.anonymous (in their UI language)
-                cursorObj.name = '';
-                cursorObj.uid = uid;
-            }
 
             // 1. Transform the cursor to get the offset relative to our doc
             // 2. Turn it into a range

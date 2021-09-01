@@ -1658,6 +1658,7 @@ define([
         UI.openCustomModal(modal);
     };
 
+    Messages.toolbar_userMenuAlt = "User menu"; // XXX
     UIElements.createUserAdminMenu = function (Common, config) {
         var metadataMgr = Common.getMetadataMgr();
 
@@ -1990,12 +1991,16 @@ define([
         */
 
         var $displayName = $userAdmin.find('.'+displayNameCls);
+        $userAdmin.attr({ // XXX is this on the right element?
+            alt: Messages.toolbar_userMenuAlt,
+        });
 
-        var $avatar = $userAdmin.find('> button .cp-dropdown-button-title'); // XXX alt="User menu"
+        var $avatar = $userAdmin.find('> button .cp-dropdown-button-title');
         var loadingAvatar;
         var to;
         var oldUrl = '';
         var oldUid;
+        var oldName;
         var updateButton = function () {
             var myData = metadataMgr.getUserData();
             var privateData = metadataMgr.getPrivateData();
@@ -2017,11 +2022,12 @@ define([
             var newName = UI.getDisplayName(myData.name);
             var url = myData.avatar;
             $displayName.text(newName);
-            if ((accountName && oldUrl !== url) || !accountName && uid !== oldUid) {
+            if ((accountName && oldUrl !== url) || !accountName && uid !== oldUid || oldName !== newName) {
                 $avatar.html('');
                 Common.displayAvatar($avatar, url, newName, function ($img) {
                     oldUrl = url;
                     oldUid = uid;
+                    oldName = newName;
                     $userAdmin.find('> button').removeClass('cp-avatar');
                     if ($img) { $userAdmin.find('> button').addClass('cp-avatar'); }
                     loadingAvatar = false;

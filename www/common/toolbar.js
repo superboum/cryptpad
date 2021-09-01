@@ -166,6 +166,7 @@ MessengerUI, Messages, Pages) {
         });
     };
     var showColors = false;
+    Messages.userlist_visitProfile = "Visit {0}'s profile"; // XXX "'s" is incorrect for names that end in "s" in English... don't care?
     var updateUserList = function (toolbar, config, forceOffline) {
         if (!config.displayed || config.displayed.indexOf('userlist') === -1) { return; }
         if (toolbar.isAlone) { return; }
@@ -251,6 +252,7 @@ MessengerUI, Messages, Pages) {
         var friendRequests = Common.getFriendRequests(); // Friend requests received
         editUsersNames.forEach(function (data) {
             var name = data.name || Messages.anonymous;
+            var safeName = Util.fixHTML(name);
             var $span = $('<span>', {'class': 'cp-avatar'});
             if (data.color && showColors) {
                 $span.css('border-color', data.color);
@@ -325,7 +327,7 @@ MessengerUI, Messages, Pages) {
                     $('<button>', {
                         'class': 'fa fa-bell cp-toolbar-userlist-button',
                         'data-cptippy-html': true,
-                        'title': Messages._getKey('friendRequest_received', [Util.fixHTML(name)]),
+                        'title': Messages._getKey('friendRequest_received', [safeName]),
                     }).appendTo($nameSpan).click(function (e) {
                         e.stopPropagation();
                         UIElements.displayFriendRequestModal(Common, friendRequests[data.curvePublic]);
@@ -336,7 +338,7 @@ MessengerUI, Messages, Pages) {
                         'class': 'fa fa-user-plus cp-toolbar-userlist-button',
                         'data-cptippy-html': true,
                         'title': Messages._getKey('userlist_addAsFriendTitle', [
-                            Util.fixHTML(name)
+                            safeName,
                         ])
                     }).appendTo($nameSpan).click(function (e) {
                         e.stopPropagation();
@@ -358,9 +360,9 @@ MessengerUI, Messages, Pages) {
                 });
             }
             if (data.profile) {
-                // XXX title to visit their profile "Visit {0}'s profile"
                 // Messages.contacts_info3 "Double-click their icon to view their profile",
                 $span.addClass('cp-userlist-clickable');
+                $span.attr('title', Messages._getKey('userlist_visitProfile', [name]));
                 $span.click(function () {
                     Common.openURL(origin+'/profile/#' + data.profile);
                 });
