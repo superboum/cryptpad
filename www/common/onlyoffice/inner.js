@@ -1582,7 +1582,8 @@ define([
                         chat: false,
                         logo: {
                             url: "/bounce/#" + encodeURIComponent('https://www.onlyoffice.com')
-                        }
+                        },
+                        uiTheme: window.CryptPad_theme === 'dark' ? 'theme-dark' : 'theme-light'
                     },
                     "user": {
                         "id": String(myOOId), //"c0c3bf82-20d7-4663-bf6d-7fa39c598b1d",
