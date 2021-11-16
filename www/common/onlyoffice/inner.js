@@ -506,6 +506,19 @@ define([
             }
             myUniqueOOId = undefined;
             setMyId();
+            var editor = getEditor();
+            if (editor) {
+                var app = common.getMetadataMgr().getPrivateData().ooType;
+                var d;
+                if (app === 'doc') {
+                    d = editor.GetDocument().Document;
+                } else if (app === 'presentation') {
+                    d = editor.GetPresentation().Presentation;
+                }
+                if (d) {
+                    APP.oldCursor = d.GetSelectionState();
+                }
+            }
             if (APP.docEditor) { APP.docEditor.destroyEditor(); } // Kill the old editor
             $('iframe[name="frameEditor"]').after(h('div#cp-app-oo-placeholder-a')).remove();
             ooLoaded = false;
@@ -1586,6 +1599,10 @@ define([
                         var $tb = $iframe.find('head');
                         var css = // Old OO
                                   //'#id-toolbar-full .toolbar-group:nth-child(2), #id-toolbar-full .separator:nth-child(3) { display: none; }' +
+                                  '#slot-btn-inschart { display: none !important; }' + // XXX XXX
+                                  '#slot-btn-insertchart { display: none !important; }' + // XXX XXX
+                                  '#slot-btn-instable { display: none !important; }' + // XXX XXX
+                                  '#slot-btn-inserttable { display: none !important; }' + // XXX XXX
                                   //'#fm-btn-save { display: none !important; }' +
                                   //'#panel-settings-general tr.autosave { display: none !important; }' +
                                   //'#panel-settings-general tr.coauth { display: none !important; }' +
@@ -1630,6 +1647,29 @@ define([
                         }
                     },
                     "onDocumentReady": function () {
+                        // XXX remove the following block
+                        try {
+                        var app = common.getMetadataMgr().getPrivateData().ooType;
+                        var d, hasChart;
+                        if (app === 'doc') {
+                            d = getEditor().GetDocument();
+                            hasChart = d.GetAllCharts().length || d.Document.Content.some(function (obj) {
+                                return obj instanceof getWindow().AscCommonWord.CTable;
+                            });
+                            if (hasChart) { Feedback.send('OO_DOC_CHART', true); }
+                        } else if (app === 'presentation') {
+                            d = getEditor().GetPresentation().Presentation;
+                            hasChart = d.Slides.some(function (slide) {
+                                return slide.getDrawingObjects().some(function (obj) {
+                                    return obj instanceof getWindow().AscFormat.CChartSpace || obj instanceof getWindow().AscFormat.CGraphicFrame;
+                                });
+                            });
+                            if (hasChart) { Feedback.send('OO_SLIDE_CHART', true); }
+                        }
+                        } catch (e) {}
+
+
+
                         evOnSync.fire();
                         var onMigrateRdy = Util.mkEvent();
                         onMigrateRdy.reg(function () {
@@ -1712,6 +1752,21 @@ define([
                                 if (lang === "fr") { lang = 'fr-fr'; }
                                 var l = w.Common.util.LanguageInfo.getLocalLanguageCode(lang);
                                 getEditor().asc_setDefaultLanguage(l);
+                            }
+
+                            if (APP.oldCursor) {
+                                var app = common.getMetadataMgr().getPrivateData().ooType;
+                                var d;
+                                if (app === 'doc') {
+                                    d = getEditor().GetDocument().Document;
+                                } else if (app === 'presentation') {
+                                    d = getEditor().GetPresentation().Presentation;
+                                }
+                                if (d) {
+                                    d.SetSelectionState(APP.oldCursor);
+                                    d.UpdateSelection();
+                                }
+                                delete APP.oldCursor;
                             }
                         }
                         delete APP.startNew;
@@ -2883,7 +2938,7 @@ Uncaught TypeError: Cannot read property 'calculatedType' of null
 
 
             var useNewDefault = content.version && content.version >= 2;
-            openRtChannel(function () {
+            openRtChannel(Util.once(function () {
                 setMyId();
                 oldHashes = JSON.parse(JSON.stringify(content.hashes));
                 initializing = false;
@@ -3041,7 +3096,7 @@ Uncaught TypeError: Cannot read property 'calculatedType' of null
                 }
 
                 next();
-            });
+            }));
         };
 
         config.onError = function (err) {
