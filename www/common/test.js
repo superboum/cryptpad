@@ -1,5 +1,10 @@
 define([], function () {
-    return function () {};
+    var out = function () {};
+    out.options = {};
+    out.testing = false;
+    out.registerInner = function () { };
+    out.registerOuter = function () { };
+    return out;
     if (window.__CRYPTPAD_TEST_OBJ_) { return window.__CRYPTPAD_TEST_OBJ_; }
 
     var locks = [];
