@@ -92,7 +92,12 @@ define([
                 if (!obj || obj.error) { return; }
                 Object.keys(obj || {}).forEach(function (id) {
                     var t = obj[id];
-                    var _keys = t.keys.drive || {};
+                    var _keys = {};
+                    try {
+                        _keys = t.keys.drive || {};
+                    } catch (err) {
+                        console.error(err);
+                    }
                     _keys.id = id;
                     if (!_keys.edPrivate) { return; }
                     keys.push(t.keys.drive);
@@ -156,7 +161,7 @@ define([
 
     common.makeNetwork = function (cb) {
         require([
-            '/bower_components/netflux-websocket/netflux-client.js',
+            'netflux-client',
             '/common/outer/network-config.js'
         ], function (Netflux, NetConfig) {
             var wsUrl = NetConfig.getWebsocketURL();
@@ -723,18 +728,26 @@ define([
         var optsPut = {};
         if (p.type === 'poll') { optsPut.initialState = '{}'; }
         // PPP: add password as cryptput option
-        Cryptput(hash, data.toSave, function (e) {
-            if (e) { throw new Error(e); }
-            postMessage("ADD_PAD", {
-                teamId: data.teamId,
-                href: href,
-                title: data.title,
-                path: ['template']
-            }, function (obj) {
-                if (obj && obj.error) { return void cb(obj.error); }
-                cb();
-            });
-        }, optsPut);
+        Nthen(function (w) {
+            common.getEdPublic(null, w(function (obj) {
+                if (obj && obj.error) { return; }
+                optsPut.owners = [obj];
+            }));
+        }).nThen(function () {
+            Cryptput(hash, data.toSave, function (e) {
+                if (e) { throw new Error(e); }
+                postMessage("ADD_PAD", {
+                    teamId: data.teamId,
+                    href: href,
+                    title: data.title,
+                    owners: optsPut.owners,
+                    path: ['template']
+                }, function (obj) {
+                    if (obj && obj.error) { return void cb(obj.error); }
+                    cb();
+                });
+            }, optsPut);
+        });
     };
 
     common.isTemplate = function (href, cb) {
@@ -959,7 +972,7 @@ define([
                 data.teamId = common.initialTeam;
             }
             data.forceSave = 1;
-            delete common.initialTeam;
+            //delete common.initialTeam;
         }
         if (common.initialPath) {
             if (!data.path) {
@@ -1931,6 +1944,17 @@ define([
                 if (obj && obj.error) {
                     waitFor.abort();
                     return void cb(obj);
+                }
+            }));
+        }).nThen(function (waitFor) {
+            var blockUrl = Block.getBlockUrl(blockKeys);
+            Util.fetch(blockUrl, waitFor(function (err /* block */) {
+                if (err) {
+                    console.error(err);
+                    waitFor.abort();
+                    return cb({
+                        error: err,
+                    });
                 }
                 console.log("new login block written");
                 var newBlockHash = Block.getBlockHash(blockKeys);

@@ -13,13 +13,14 @@ define([
     '/common/pinpad.js',
     '/common/outer/network-config.js',
     '/customize/pages.js',
+    '/checkup/checkup-tools.js',
 
     '/bower_components/tweetnacl/nacl-fast.min.js',
     'css!/bower_components/components-font-awesome/css/font-awesome.min.css',
     'less!/checkup/app-checkup.less',
 ], function ($, ApiConfig, Assertions, h, Messages, DomReady,
             nThen, SFCommonO, Login, Hash, Util, Pinpad,
-            NetConfig, Pages) {
+            NetConfig, Pages, Tools) {
     var Assert = Assertions();
     var trimSlashes = function (s) {
         if (typeof(s) !== 'string') { return s; }
@@ -255,6 +256,11 @@ define([
             ]));
         }));
 
+        // time out after 30 seconds
+        setTimeout(function () {
+            cb('TIMEOUT');
+        }, 30000);
+
         var bytes = new Uint8Array(Login.requiredBytes);
 
         var opt = Login.allocateBytes(bytes);
@@ -391,21 +397,32 @@ define([
 
     assert(function (cb, msg) {
         setWarningClass(msg);
-        msg.appendChild(h('span', [
-            "You haven't opted out of participation in Google's ",
-            code('FLoC'),
-            " targeted advertizing network. This can be done by adding a ",
-            code('permissions-policy'),
-            " HTTP header with a value of ",
-            code('interest-cohort=()'),
-            " in your reverse proxy's configuration. See the provided NGINX configuration file for an example. ",
-            h('p', [
-                link("https://www.eff.org/deeplinks/2021/04/am-i-floced-launch", 'Learn more'),
-            ]),
-        ]));
+
+        var printMessage = function (value) {
+            msg.appendChild(h('span', [
+                "This instance hasn't opted out of participation in Google's ",
+                code('FLoC'),
+                " targeted advertizing network. ",
+
+                "This can be done by setting a ",
+                code('permissions-policy'),
+                " HTTP header with a value of ",
+                code('"interest-cohort=()"'),
+                " in the configuration of its reverse proxy instead of the current value (",
+                code(value),
+                "). See the provided NGINX configuration file for an example. ",
+
+                h('p', [
+                    link("https://www.eff.org/deeplinks/2021/04/am-i-floced-launch", 'Learn more'),
+                ]),
+            ]));
+        };
+
         $.ajax('/?'+ (+new Date()), {
             complete: function (xhr) {
-                cb(xhr.getResponseHeader('permissions-policy') === 'interest-cohort=()');
+                var header = xhr.getResponseHeader('permissions-policy');
+                printMessage(JSON.stringify(header));
+                cb(header === 'interest-cohort=()' || header);
             },
         });
     });
@@ -668,6 +685,7 @@ define([
         });
     });
 
+/*
     assert(function (cb, msg) {
         var url = '/sheet/inner.html';
         msg.appendChild(h('span', [
@@ -686,6 +704,70 @@ define([
             cb(content === 'same-origin');
         });
     });
+*/
+
+    var safariGripe = function () {
+        return h('p.cp-notice-other', 'This is expected because Safari and platforms that use its engine lack commonly supported functionality.');
+    };
+
+    var browserIssue = function () {
+        return h('p.cp-notice-other', 'This test checks for the presence of features in your browser and is not necessarily caused by server misconfiguration.');
+    };
+
+    assert(function (cb, msg) {
+        cb = Util.once(cb);
+        setWarningClass(msg);
+        var notice = h('span', [
+            h('p', 'It appears that some features required for Office file format conversion are not present.'),
+            Tools.isSafari()? safariGripe(): undefined,
+            browserIssue(),
+        ]);
+
+        msg.appendChild(notice);
+
+        var expected = [
+            'Atomics',
+            'SharedArrayBuffer',
+            'WebAssembly',
+            ['WebAssembly', 'Memory'],
+            ['WebAssembly', 'instantiate'],
+            ['WebAssembly', 'instantiateStreaming'],
+            ['Buffer', 'from'],
+
+            'SharedWorker',
+            'worker',
+            'crossOriginIsolated',
+        ];
+
+        var responses = {};
+
+        nThen(function (w) {
+            deferredPostMessage({
+                command: 'CHECK_JS_APIS',
+                content: {
+                    globals: expected,
+                },
+            }, w(function (response) {
+                Util.extend(responses, response);
+            }));
+
+            deferredPostMessage({
+                command: 'FANCY_API_CHECKS',
+                content: {
+                },
+            }, w(function (response) {
+                Util.extend(responses, response);
+            }));
+        }).nThen(function () {
+            if (!responses.Atomics || !responses.WebAssembly) {
+                return void cb(responses);
+            }
+            if (responses.SharedArrayBuffer || responses.SharedArrayBufferFallback) {
+                return cb(true);
+            }
+            return void cb(response);
+        });
+    });
 
     var isHTTPS = function (host) {
         return /^https:\/\//.test(host);
@@ -694,17 +776,19 @@ define([
     var isOnion = function (host) {
         return /\.onion$/.test(host);
     };
+    var isLocalhost = function (host) {
+        return /^http:\/\/localhost/.test(host);
+    };
+
     assert(function (cb, msg) {
         // provide an exception for development instances
-        if (/http:\/\/localhost/.test(trimmedUnsafe)) { return void cb(true); }
+        if (isLocalhost(trimmedUnsafe) && isLocalhost(window.location.href)) { return void cb(true); }
 
         // if both the main and sandbox domains are onion addresses
         // then the HTTPS requirement is unnecessary
         if (isOnion(trimmedUnsafe) && isOnion(trimmedSafe)) { return void cb(true); }
 
         // otherwise expect that both inner and outer domains use HTTPS
-        setWarningClass(msg);
-
         msg.appendChild(h('span', [
             "Both ",
             code('httpUnsafeOrigin'),
@@ -716,10 +800,113 @@ define([
             '. ',
             RESTART_WARNING(),
         ]));
-
-        console.error("HTTPS?", trimmedUnsafe, trimmedSafe);
         cb(isHTTPS(trimmedUnsafe) && isHTTPS(trimmedSafe));
     });
+
+    [
+        //'sheet',
+        //'presentation',
+        //'doc',
+        //'convert',
+    ].forEach(function (url) {
+        assert(function (cb, msg) {
+            var header = 'cross-origin-opener-policy';
+            var expected = 'same-origin';
+            deferredPostMessage({
+                command: 'GET_HEADER',
+                content: {
+                    url: '/' + url + '/',
+                    header: header,
+                }
+            }, function (content) {
+                msg.appendChild(h('span', [
+                    code(url),
+                    ' was served without the correct ',
+                    code(header),
+                    ' HTTP header value (',
+                    code(expected),
+                    '). This will interfere with your ability to convert between office file formats.'
+                ]));
+                cb(content === expected);
+            });
+        });
+    });
+
+    assert(function (cb, msg) {
+        // check that the sandbox domain is included in connect-src
+        msg.appendChild(h('span', [
+            "This instance's ",
+            code("Content-Security-Policy"),
+            " headers do not include the sandboxed domain (",
+            code(trimmedSafe),
+            ") in ",
+            code("connect-src"),
+            ". This can cause problems with fonts when printing office documents.",
+            " This is probably due to an incorrectly configured reverse proxy.",
+            " See the provided NGINX configuration file for an example of how to set this header correctly.",
+        ]));
+
+        $.ajax(cacheBuster('/'), {
+            dataType: 'text',
+            complete: function (xhr) {
+                var CSP = parseCSP(xhr.getResponseHeader('content-security-policy'));
+                var connect = (CSP && CSP['connect-src']) || "";
+                if (connect.includes(trimmedSafe)) {
+                    return void cb(true);
+                }
+                cb(CSP);
+            },
+        });
+    });
+
+/*
+    assert(function (cb, msg) {
+        setWarningClass(msg);
+        $.ajax(cacheBuster('/'), {
+            dataType: 'text',
+            complete: function (xhr) {
+                var serverToken = xhr.getResponseHeader('server');
+                if (serverToken === null) { return void cb(true); }
+
+                var lowered = (serverToken || '').toLowerCase();
+                var family;
+
+                ['Apache', 'Caddy', 'NGINX'].some(function (pattern) {
+                    if (lowered.indexOf(pattern.toLowerCase()) !== -1) {
+                        family = pattern;
+                        return true;
+                    }
+                });
+
+                var text = [
+                    "This instance is set to respond with an HTTP ",
+                    code("server"),
+                    " header. This information can make it easier for attackers to find and exploit known vulnerabilities. ",
+                ];
+
+                if (family === 'NGINX') { // FIXME incorrect instructions for HTTP2. needs a recompile?
+                    msg.appendChild(h('span', text.concat([
+                        "This can be addressed by setting ",
+                        code("server_tokens off"),
+                        " in your global NGINX config."
+                    ])));
+                    return void cb(serverToken);
+                }
+
+                // handle other
+                msg.appendChild(h('span', text.concat([
+                    "In this case, it appears that the host server is running ",
+                    code(serverToken),
+                    " instead of ",
+                    code("NGINX"),
+                    " as recommended. As such, you may not benefit from the latest security enhancements that are tested and maintained by the CryptPad development team.",
+                ])));
+
+                cb(serverToken);
+            }
+        });
+    });
+*/
 
     if (false) {
         assert(function (cb, msg) {
@@ -735,12 +922,21 @@ define([
     };
 
     var failureReport = function (obj) {
+        var printableValue = obj.output;
+        try {
+            printableValue = JSON.stringify(obj.output, null, ' ');
+        } catch (err) {
+            console.error(err);
+        }
+
         return h('div.error', [
             h('h5', obj.message),
-            h('table', [
-                row(["Failed test number", obj.test + 1]),
-                row(["Returned value", obj.output]),
-            ]),
+            h('div.table-container',
+                h('table', [
+                    row(["Failed test number", obj.test + 1]),
+                    row(["Returned value", h('pre', code(printableValue))]),
+                ])
+            ),
         ]);
     };
 
@@ -748,7 +944,7 @@ define([
     var $progress = $('#cp-progress');
 
     var versionStatement = function () {
-        return h('p', [
+        return h('p.cp-notice-version', [
             "This instance is running ",
             h('span.cp-app-checkup-version',[
                 "CryptPad",
@@ -756,6 +952,18 @@ define([
                 Pages.versionString,
             ]),
             '.',
+        ]);
+    };
+
+    var browserStatement = function () {
+        var name = Tools.guessBrowser();
+        if (!name) { return; }
+        return h('p.cp-notice-browser', [
+            "You appear to be using a ",
+            h('span.cp-app-checkup-browser', name),
+            ' browser on ',
+            h('span.underline', Tools.guessOS()),
+            ' to view this page.',
         ]);
     };
 
@@ -769,10 +977,11 @@ define([
 
         var failedDetails = "Details found below";
         var successDetails = "This checkup only tests the most common configuration issues. You may still experience errors or incorrect behaviour.";
-        var details = h('p', failed? failedDetails: successDetails);
+        var details = h('p.cp-notice-details', failed? failedDetails: successDetails);
 
         var summary = h('div.summary.' + statusClass, [
             versionStatement(),
+            browserStatement(),
             h('p', Messages._getKey('assert_numberOfTestsPassed', [
                 state.passed,
                 state.total

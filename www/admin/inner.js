@@ -94,6 +94,7 @@ define([
             'cp-admin-list-my-instance',
             'cp-admin-consent-to-contact',
             'cp-admin-remove-donate-button',
+            'cp-admin-instance-purpose',
         ],
     };
 
@@ -832,7 +833,8 @@ define([
             var premium = t.some(function (msg) {
                 var _ed = Util.find(msg, ['content', 'msg', 'content', 'sender', 'edPublic']);
                 if (ed !== _ed) { return; }
-                return Util.find(msg, ['content', 'msg', 'content', 'sender', 'plan']);
+                return Util.find(msg, ['content', 'msg', 'content', 'sender', 'plan']) ||
+                       Util.find(msg, ['content', 'msg', 'content', 'sender', 'quota', 'plan']);
             });
             var lastMsg = t[t.length - 1];
             var lastMsgEd = Util.find(lastMsg, ['content', 'msg', 'content', 'sender', 'edPublic']);
@@ -1470,11 +1472,8 @@ define([
             var end = h('input');
             var $start = $(start);
             var $end = $(end);
-            var is24h = false;
+            var is24h = UIElements.is24h();
             var dateFormat = "Y-m-d H:i";
-            try {
-                is24h = !new Intl.DateTimeFormat(navigator.language, { hour: 'numeric' }).format(0).match(/AM/);
-            } catch (e) {}
             if (!is24h) { dateFormat = "Y-m-d h:i K"; }
 
             var endPickr = Flatpickr(end, {
@@ -1596,7 +1595,7 @@ define([
             var getData = function () {
                 var url = $input.val();
                 if (!Util.isValidURL(url)) {
-                    console.error('Invalid URL');
+                    console.error('Invalid URL', url);
                     return false;
                 }
                 return url;
@@ -1674,34 +1673,51 @@ define([
         var $div = makeBlock('performance-profiling'); // Msg.admin_performanceProfilingHint, .admin_performanceProfilingTitle
 
         var onRefresh = function () {
-            var body = h('tbody');
+            var createBody = function () {
+                 return h('div#profiling-chart.cp-charts.cp-bar-table', [
+                    h('span.cp-charts-row.heading', [
+                        h('span', Messages.admin_performanceKeyHeading),
+                        h('span', Messages.admin_performanceTimeHeading),
+                        h('span', Messages.admin_performancePercentHeading),
+                        //h('span', ''), //Messages.admin_performancePercentHeading),
+                    ]),
+                ]);
+            };
 
-            var table = h('table#cp-performance-table', [
-                h('thead', [
-                    h('th', Messages.admin_performanceKeyHeading),
-                    h('th', Messages.admin_performanceTimeHeading),
-                    h('th', Messages.admin_performancePercentHeading),
-                ]),
-                body,
-            ]);
-            var appendRow = function (key, time, percent) {
-                console.log("[%s] %ss running time (%s%)", key, time, percent);
-                body.appendChild(h('tr', [ key, time, percent ].map(function (x) {
-                    return h('td', x);
-                })));
+            var body = createBody();
+            var appendRow = function (key, time, percent, scaled) {
+                //console.log("[%s] %ss running time (%s%)", key, time, percent);
+                body.appendChild(h('span.cp-charts-row', [
+                    h('span', key),
+                    h('span', time),
+                    //h('span', percent),
+                    h('span.cp-bar-container', [
+                        h('span.cp-bar.profiling-percentage', {
+                            style: 'width: ' + scaled + '%',
+                        }, ' ' ),
+                        h('span.profiling-label', percent + '%'),
+                    ]),
+                ]));
             };
             var process = function (_o) {
+                $('#profiling-chart').remove();
+                body = createBody();
                 var o = _o[0];
                 var sorted = Object.keys(o).sort(function (a, b) {
                   if (o[b] - o[a] <= 0) { return -1; }
                   return 1;
                 });
+
+                var values = sorted.map(function (k) { return o[k]; });
                 var total = 0;
-                sorted.forEach(function (k) { total += o[k]; });
+                values.forEach(function (value) { total += value; });
+                var max = Math.max.apply(null, values);
+
                 sorted.forEach(function (k) {
                     var percent = Math.floor((o[k] / total) * 1000) / 10;
-                    appendRow(k, o[k], percent);
+                    appendRow(k, o[k], percent, (o[k] / max) * 100);
                 });
+                $div.append(h('div.width-constrained', body));
             };
 
             sFrameChan.query('Q_ADMIN_RPC', {
@@ -1711,10 +1727,7 @@ define([
                     UI.warn(Messages.error);
                     return void console.error(e, data);
                 }
-                //console.info(data);
-                $div.find("table").remove();
                 process(data);
-                $div.append(table);
             });
         };
 
@@ -1852,6 +1865,73 @@ define([
             });
         },
     });
+
+    var sendDecree = function (data, cb) {
+        sFrameChan.query('Q_ADMIN_RPC', {
+            cmd: 'ADMIN_DECREE',
+            data: data,
+        }, cb);
+    };
+
+    create['instance-purpose'] = function () {
+        var key = 'instance-purpose';
+        var $div = makeBlock(key); // Messages.admin_instancePurposeTitle.admin_instancePurposeHint
+
+        var values = [
+            'noanswer', // Messages.admin_purpose_noanswer
+            'experiment', // Messages.admin_purpose_experiment
+            'personal', // Messages.admin_purpose_personal
+            'education', // Messages.admin_purpose_education
+            'org', // Messages.admin_purpose_org
+            'business', // Messages.admin_purpose_business
+            'public', // Messages.admin_purpose_public
+        ];
+
+        var defaultPurpose = 'noanswer';
+        var purpose = APP.instanceStatus.instancePurpose || defaultPurpose;
+
+        var opts = h('div.cp-admin-radio-container', [
+            values.map(function (key) {
+                var full_key = 'admin_purpose_' + key;
+                return UI.createRadio('cp-instance-purpose-radio', 'cp-instance-purpose-radio-'+key,
+                    Messages[full_key] || Messages._getKey(full_key, [defaultPurpose]),
+                    key === purpose, {
+                        input: { value: key },
+                        label: { class: 'noTitle' }
+                    });
+            })
+        ]);
+
+        var $opts = $(opts);
+        //var $br = $(h('br',));
+        //$div.append($br);
+
+        $div.append(opts);
+
+        var setPurpose = function (value, cb) {
+            sendDecree([
+                'SET_INSTANCE_PURPOSE',
+                [ value]
+            ], cb);
+        };
+
+        $opts.on('change', function () {
+            var val = $opts.find('input:radio:checked').val();
+            console.log(val);
+            //spinner.spin();
+            setPurpose(val, function (e, response) {
+                if (e || response.error) {
+                    UI.warn(Messages.error);
+                    //spinner.hide();
+                    return;
+                }
+                //spinner.done();
+                UI.log(Messages.saved);
+            });
+        });
+
+        return $div;
+    };
 
     var hideCategories = function () {
         APP.$rightside.find('> div').hide();

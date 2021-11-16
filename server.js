@@ -23,28 +23,24 @@ var fancyURL = function (domain, path) {
     return false;
 };
 
+var deriveSandboxOrigin = function (unsafe, port) {
+    var url = new URL(unsafe);
+    url.port = port;
+    return url.origin;
+};
+
 (function () {
     // you absolutely must provide an 'httpUnsafeOrigin' (a truthy string)
     if (!Env.httpUnsafeOrigin || typeof(Env.httpUnsafeOrigin) !== 'string') {
         throw new Error("No 'httpUnsafeOrigin' provided");
     }
 
-    // fall back to listening on a local address
-    // if httpAddress is not a string
-    if (typeof(config.httpAddress) !== 'string') {
-        config.httpAddress = '127.0.0.1';
-    }
-
-    // listen on port 3000 if a valid port number was not provided
-    if (typeof(config.httpPort) !== 'number' || config.httpPort > 65535) {
-        config.httpPort = 3000;
-    }
-
     if (typeof(Env.httpSafeOrigin) !== 'string') {
         Env.NO_SANDBOX = true;
-        if (typeof(config.httpSafePort) !== 'number') {
-            config.httpSafePort = config.httpPort + 1;
+        if (typeof(Env.httpSafePort) !== 'number') {
+            Env.httpSafePort = Env.httpPort + 1;
         }
+        Env.httpSafeOrigin = deriveSandboxOrigin(Env.httpUnsafeOrigin, Env.httpSafePort);
     }
 }());
 
@@ -77,21 +73,22 @@ var setHeaders = (function () {
         }
     } else {
         // use the default CSP headers constructed with your domain
-        headers['Content-Security-Policy'] = Default.contentSecurity(Env.httpUnsafeOrigin);
+        headers['Content-Security-Policy'] = Default.contentSecurity(Env.httpUnsafeOrigin, Env.httpSafeOrigin);
     }
 
     const padHeaders = Util.clone(headers);
     if (typeof(config.padContentSecurity) === 'string') {
         padHeaders['Content-Security-Policy'] = config.padContentSecurity;
     } else {
-        padHeaders['Content-Security-Policy'] = Default.padContentSecurity(Env.httpUnsafeOrigin);
+        padHeaders['Content-Security-Policy'] = Default.padContentSecurity(Env.httpUnsafeOrigin, Env.httpSafeOrigin);
     }
     if (Object.keys(headers).length) {
         return function (req, res) {
             // apply a bunch of cross-origin headers for XLSX export in FF and printing elsewhere
+            /*
             applyHeaderMap(res, {
-                "Cross-Origin-Opener-Policy": /^\/sheet\//.test(req.url)? 'same-origin': '',
-            });
+                "Cross-Origin-Opener-Policy": /^\/(sheet|presentation|doc|convert)\//.test(req.url)? 'same-origin': '',
+            });*/
 
             if (Env.NO_SANDBOX) { // handles correct configuration for local development
             // https://stackoverflow.com/questions/11531121/add-duplicate-http-response-headers-in-nodejs
@@ -112,8 +109,9 @@ var setHeaders = (function () {
 
             // targeted CSP, generic policies, maybe custom headers
             const h = [
-                    /^\/common\/onlyoffice\/.*\/index\.html.*/,
+                    /^\/common\/onlyoffice\/.*\.html.*/,
                     /^\/(sheet|presentation|doc)\/inner\.html.*/,
+                    /^\/unsafeiframe\/inner\.html.*$/,
                 ].some((regex) => {
                     return regex.test(req.url);
                 }) ? padHeaders : headers;
@@ -239,14 +237,14 @@ var makeRouteCache = function (template, cacheName) {
 var serveConfig = makeRouteCache(function (host) {
     return [
         'define(function(){',
-        'var obj = ' + JSON.stringify({
+        'return ' + JSON.stringify({
             requireConf: {
                 waitSeconds: 600,
                 urlArgs: 'ver=' + Env.version + cacheString(),
             },
             removeDonateButton: (Env.removeDonateButton === true),
             allowSubscriptions: (Env.allowSubscriptions === true),
-            websocketPath: config.externalWebsocketURL,
+            websocketPath: Env.websocketPath,
             httpUnsafeOrigin: Env.httpUnsafeOrigin,
             adminEmail: Env.adminEmail,
             adminKeys: Env.admins,
@@ -256,16 +254,8 @@ var serveConfig = makeRouteCache(function (host) {
             maxUploadSize: Env.maxUploadSize,
             premiumUploadSize: Env.premiumUploadSize,
             restrictRegistration: Env.restrictRegistration,
+            httpSafeOrigin: Env.httpSafeOrigin,
         }, null, '\t'),
-        'obj.httpSafeOrigin = ' + (function () {
-            if (Env.httpSafeOrigin) { return '"' + Env.httpSafeOrigin + '"'; }
-            if (config.httpSafePort) {
-                return "(function () { return window.location.origin.replace(/\:[0-9]+$/, ':" +
-                    config.httpSafePort + "'); }())";
-            }
-            return 'window.location.origin';
-        }()),
-        'return obj',
         '});'
     ].join(';\n')
 }, 'configCache');
@@ -311,14 +301,14 @@ var httpServer = Env.httpServer = Http.createServer(app);
 nThen(function (w) {
     Fs.exists(__dirname + "/customize", w(function (e) {
         if (e) { return; }
-        console.log("Cryptpad is customizable, see customize.dist/readme.md for details");
+        console.log("CryptPad is customizable, see customize.dist/readme.md for details");
     }));
 }).nThen(function (w) {
-    httpServer.listen(config.httpPort,config.httpAddress,function(){
-        var host = config.httpAddress;
+    httpServer.listen(Env.httpPort, Env.httpAddress, function(){
+        var host = Env.httpAddress;
         var hostName = !host.indexOf(':') ? '[' + host + ']' : host;
 
-        var port = config.httpPort;
+        var port = Env.httpPort;
         var ps = port === 80? '': ':' + port;
 
         var roughAddress = 'http://' + hostName + ps;
@@ -336,8 +326,8 @@ nThen(function (w) {
         }
     });
 
-    if (config.httpSafePort) {
-        Http.createServer(app).listen(config.httpSafePort, config.httpAddress, w());
+    if (Env.httpSafePort) {
+        Http.createServer(app).listen(Env.httpSafePort, Env.httpAddress, w());
     }
 }).nThen(function () {
     var wsConfig = { server: httpServer };
@@ -348,7 +338,7 @@ nThen(function (w) {
         config.log = _log;
 
         if (Env.OFFLINE_MODE) { return; }
-        if (config.externalWebsocketURL) { return; }
+        if (Env.websocketPath) { return; }
 
         require("./lib/api").create(Env);
     });

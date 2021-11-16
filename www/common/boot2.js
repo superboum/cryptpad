@@ -34,6 +34,7 @@ try {
 define([
     '/common/requireconfig.js'
 ], function (RequireConfig) {
+
     require.config(RequireConfig());
 
     // most of CryptPad breaks if you don't support isArray
@@ -51,11 +52,6 @@ define([
             for (;i < l; i++) { this[i] = x; }
             return this;
         };
-    }
-
-    // RPC breaks if you don't support Number.MAX_SAFE_INTEGER
-    if (Number && !Number.MAX_SAFE_INTEGER) {
-        Number.MAX_SAFE_INTEGER = 9007199254740991;
     }
 
     var failStore = function () {
@@ -91,4 +87,10 @@ define([
     } catch (e) { console.error(e); failStore(); }
 
     require([document.querySelector('script[data-bootload]').getAttribute('data-bootload')]);
+    if (typeof(Promise) !== 'function') {
+        setTimeout(function () {
+            var s = "Internet Explorer is not supported anymore, including by Microsoft.\n\nMost of CryptPad's collaborative functionality requires a modern browser to work.\n\nWe recommend Mozilla Firefox.";
+            window.alert(s);
+        });
+    }
 });

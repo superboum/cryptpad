@@ -37,7 +37,11 @@ define([
     var cachePut = function (k, v, cb) {
         if (window.cryptpadCache) { return void window.cryptpadCache.put(k, v, cb); }
         setTimeout(function () {
-            localStorage['LESS_CACHE|' + key + '|' + k] = v;
+            try {
+                localStorage['LESS_CACHE|' + key + '|' + k] = v;
+            } catch (err) {
+                console.error(err);
+            }
             if (cb) { cb(); }
         });
     };
@@ -110,7 +114,7 @@ define([
         if (lessEngine) {
             cb(lessEngine);
         } else {
-            require(['/common/less.min.js'], function (Less) {
+            require(['/lib/less.min.js'], function (Less) {
                 if (lessEngine) { return void cb(lessEngine); }
                 lessEngine = Less;
                 Less.functions.functionRegistry.add('LessLoader_currentFile', function () {

@@ -5,12 +5,14 @@ define([
     '/common/common-feedback.js',
     '/common/common-interface.js',
     '/common/common-hash.js',
-    '/common/textFit.min.js',
+    '/common/common-constants.js',
+    '/common/common-util.js',
+    '/lib/textFit.min.js',
     '/customize/messages.js',
     '/customize/application_config.js',
     '/common/outer/local-store.js',
     '/customize/pages.js'
-], function ($, Config, h, Feedback, UI, Hash, TextFit, Msg, AppConfig, LocalStore, Pages) {
+], function ($, Config, h, Feedback, UI, Hash, Constants, Util, TextFit, Msg, AppConfig, LocalStore, Pages) {
     var urlArgs = Config.requireConf.urlArgs;
 
     var isAvailableType = function (x) {
@@ -18,6 +20,15 @@ define([
         return AppConfig.availablePadTypes.indexOf(x) !== -1;
     };
 
+    var checkEarlyAccess = function (x) {
+        // Check if this is an early access app and if they are allowed.
+        // Check if this is a premium app and if you're premium
+        // Returns false if the app should be hidden
+        var earlyTypes = Constants.earlyAccessApps;
+        var ea = Util.checkRestrictedApp(x, AppConfig, earlyTypes,
+                    LocalStore.getPremium(), LocalStore.isLoggedIn());
+        return ea > 0;
+    };
     var checkRegisteredType = function (x) {
         // Return true if we're registered or if the app is not registeredOnly
         if (LocalStore.isLoggedIn()) { return true; }
@@ -27,20 +38,24 @@ define([
 
     return function () {
         var icons = [
-                [ 'pad', Msg.type.pad],
-                [ 'code', Msg.type.code],
-                [ 'slide', Msg.type.slide],
                 [ 'sheet', Msg.type.sheet],
-                [ 'form', Msg.type.form],
+                [ 'doc', Msg.type.doc],
+                [ 'presentation', Msg.type.presentation],
+                [ 'pad', Msg.type.pad],
                 [ 'kanban', Msg.type.kanban],
+                [ 'code', Msg.type.code],
+                [ 'form', Msg.type.form],
                 [ 'whiteboard', Msg.type.whiteboard],
+                [ 'slide', Msg.type.slide],
                 [ 'drive', Msg.type.drive]
             ].filter(function (x) {
                 return isAvailableType(x[0]);
             })
             .map(function (x) {
                 var s = 'div.bs-callout.cp-callout-' + x[0];
+                var cls = '';
                 var isEnabled = checkRegisteredType(x[0]);
+                var isEAEnabled = checkEarlyAccess(x[0]);
                 //if (i > 2) { s += '.cp-more.cp-hidden'; }
                 var icon = AppConfig.applicationsIcon[x[0]];
                 var font = icon.indexOf('cptools') === 0 ? 'cptools' : 'fa';
@@ -52,11 +67,14 @@ define([
                         window.location.href = url;
                     }
                 };
+                if (!isEAEnabled) {
+                    cls += '.cp-app-hidden';
+                }
                 if (!isEnabled) {
-                    s += '.cp-app-disabled';
+                    cls += '.cp-app-disabled';
                     attr.title = Msg.mustLogin;
                 }
-                return h('a', [
+                return h('a.cp-index-appitem' + cls, [
                     attr,
                     h(s, [
                         h('i.' + font + '.' + icon, {'aria-hidden': 'true'}),
@@ -67,6 +85,7 @@ define([
 
         icons.forEach(function (a) {
             setTimeout(function () {
+                // ensure that text in our app icons doesn't overflow
                 TextFit($(a).find('.pad-button-text')[0], {minFontSize: 13, maxFontSize: 18});
             });
         });

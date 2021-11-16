@@ -431,6 +431,10 @@
             }
         }
         .cp-toolbar-top {
+            &.toolbar-hidden {
+                display: none !important;
+            }
+
             @media screen and (max-width: @browser_media-medium-screen),
                    screen and (max-height: 500px) {
                 flex-wrap: wrap;
@@ -528,7 +532,13 @@
                         &> button {
                             height: @toolbar_line-height;
                             width: @toolbar_line-height;
-                            span { font-size: unset; }
+                            span {
+                                .avatar_vars(36px);
+                                font-size: @avatar-font-size;
+                                .animal {
+                                    font-size: @avatar-font-size-animal;
+                                }
+                            }
                         }
                         &> button.cp-avatar.cp-avatar {
                             media-tag {
@@ -851,10 +861,14 @@
                     span {
                         text-align: center;
                         width: 100%;
-                        font-size: 48px;
+                        .avatar_vars(72px);
+                        font-size: @avatar-font-size;
                         display: inline-flex;
                         justify-content: center;
                         align-items: center;
+                        .animal {
+                            font-size: @avatar-font-size-animal;
+                        }
                     }
                     &.cp-avatar {
                         .avatar_main(64px);
@@ -964,6 +978,19 @@
             align-items: center;
             .fa, .cptools {
                 margin-right: 5px;
+            }
+        }
+        button.cp-toolbar-collapse {
+/*
+        XXX this button toggles between two states and uses two titles for either state.
+        tippy doesn't work well with this, so the titles are applied to two icons
+        and we display the relevant one. Unfortunately, the hoverable area for the inner icon
+        is very small, which makes it unlikely that you'll see the title unless
+        you hover perfectly. The same is true of the drive's grid/list view toggle.
+*/
+
+            .fa {
+                margin-right: 0px;
             }
         }
 

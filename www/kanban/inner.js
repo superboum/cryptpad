@@ -18,6 +18,7 @@ define([
     '/bower_components/marked/marked.min.js',
     'cm/lib/codemirror',
     '/kanban/jkanban_cp.js',
+    '/kanban/export.js',
 
     'cm/mode/gfm/gfm',
     'cm/addon/edit/closebrackets',
@@ -50,7 +51,8 @@ define([
     ChainPad,
     Marked,
     CodeMirror,
-    jKanban)
+    jKanban,
+    Export)
 {
 
     var verbose = function (x) { console.log(x); };
@@ -95,16 +97,28 @@ define([
         // Tippy
         var html = MT.getCursorAvatar(cursor);
 
-        var l = Util.getFirstCharacter(cursor.name || Messages.anonymous);
+        var name = UI.getDisplayName(cursor.name);
+
+        var l; // label?
+        var animal = '';
+        if (cursor.name === Messages.anonymous && typeof(cursor.uid) === 'string') {
+            l = MT.getPseudorandomAnimal(cursor.uid);
+            if (l) {
+                animal = '.animal';
+            }
+        }
+        if (!l) {
+            l = MT.getPrettyInitials(name);
+        }
 
         var text = '';
         if (cursor.color) {
-            text = 'color:'+getTextColor(cursor.color)+';';
+            text = 'background-color:' + cursor.color + '; color:'+getTextColor(cursor.color)+';';
         }
-        var avatar = h('span.cp-cursor.cp-tippy-html', {
-            style: "background-color: " + (cursor.color || 'red') + ";"+text,
+        var avatar = h('span.cp-cursor.cp-tippy-html' + animal, {
+            style: text,
             'data-cptippy-html': true,
-            title: html
+            title: html,
         }, l);
         if (!noClear) {
             cursor.clear = function () {
@@ -287,7 +301,7 @@ define([
                     var fileHost = privateData.fileHost || privateData.origin;
                     var src = fileHost + Hash.getBlobPathFromHex(secret.channel);
                     var key = Hash.encodeBase64(secret.keys.cryptKey);
-                    var mt = '<media-tag src="' + src + '" data-crypto-key="cryptpad:' + key + '"></media-tag>';
+                    var mt = UI.mediaTag(src, key).outerHTML;
                     editor.replaceSelection(mt);
                 }
             };
@@ -561,12 +575,12 @@ define([
                 "12": {
                     "id": 12,
                     "title": Messages.kanban_working,
-                    "item": [3, 4]
+                    "item": [],
                 },
                 "13": {
                     "id": 13,
                     "title": Messages.kanban_done,
-                    "item": [5, 6]
+                    "item": [],
                 }
             },
             items: items
@@ -1004,6 +1018,18 @@ define([
             ]);
             $container.before(container);
 
+            var common = framework._.sfCommon;
+            var $button = common.createButton('toggle', true, {
+                element: $(container),
+                icon: 'fa-tags',
+                text: Messages.fm_tagsName,
+            }, function () {
+                $button.toggleClass('cp-toolbar-button-active');
+
+            });
+            $button.addClass('cp-toolbar-button-active');
+            framework._.toolbar.$bottomL.append($button);
+
             onRedraw.reg(function () {
                 // Redraw if new tags have been added to items
                 var old = Sortify(existing);
@@ -1060,6 +1086,11 @@ define([
             var parsed;
             try { parsed = JSON.parse(content); }
             catch (e) { return void console.error(e); }
+
+            if (parsed && parsed.id && parsed.lists && parsed.cards) {
+                return { content: Export.import(parsed) };
+            }
+
             return { content: parsed };
         });
 
@@ -1276,12 +1307,12 @@ define([
             // Add new cursor
             var avatar = getAvatar(cursor);
             var $item = $('.kanban-item[data-eid="'+cursor.item+'"]');
-            var $board = $('.kanban-board[data-id="'+cursor.board+'"]');
             if ($item.length) {
                 remoteCursors[id] = cursor;
                 $item.find('.cp-kanban-cursors').append(avatar);
                 return;
             }
+            var $board = $('.kanban-board[data-id="'+cursor.board+'"]');
             if ($board.length) {
                 remoteCursors[id] = cursor;
                 $board.find('header .cp-kanban-cursors').append(avatar);

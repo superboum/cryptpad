@@ -11,8 +11,8 @@ define(function() {
      * redirected to the drive.
      * You should never remove the drive from this list.
      */
-    AppConfig.availablePadTypes = ['drive', 'teams', 'pad', 'sheet', 'code', 'slide', 'poll', 'kanban', 'whiteboard',
-                                /*'doc', 'presentation',*/ 'file', /*'todo',*/ 'contacts', 'form'];
+    AppConfig.availablePadTypes = ['drive', 'teams', 'sheet', 'doc', 'presentation', 'pad', 'kanban', 'code', 'form', 'poll', 'whiteboard',
+                                'file', 'contacts', 'slide', 'convert'];
     /* The registered only types are apps restricted to registered users.
      * You should never remove apps from this list unless you know what you're doing. The apps
      * listed here by default can't work without a user account.
@@ -21,6 +21,19 @@ define(function() {
      * the app
      */
     AppConfig.registeredOnlyTypes = ['file', 'contacts', 'notifications', 'support'];
+
+    /* New applications may be introduced in an "early access" state which can contain
+     * bugs and can cause loss of user content. You can enable these applications on your
+     * CryptPad instance to test them and report bugs to the developers or keep them
+     * disabled until they are officially considered safe.
+     */
+    AppConfig.enableEarlyAccess = false;
+
+    // to prevent apps that aren't officially supported from showing up
+    // in the document creation modal
+    AppConfig.hiddenTypes = ['drive', 'teams', 'contacts', 'todo', 'file', 'accounts', 'calendar', 'poll', 'convert',
+    //'doc', 'presentation'
+    ];
 
     /* CryptPad is available is multiple languages, but only English and French are maintained
      * by the developers. The other languages may be outdated, and any missing string for a langauge
@@ -113,6 +126,7 @@ define(function() {
         file: 'cptools-file',
         fileupload: 'cptools-file-upload',
         folderupload: 'cptools-folder-upload',
+        link: 'fa-link',
         pad: 'cptools-richtext',
         code: 'cptools-code',
         slide: 'cptools-slide',
@@ -124,7 +138,7 @@ define(function() {
         kanban: 'cptools-kanban',
         doc: 'fa-file-word-o',
         presentation: 'fa-file-powerpoint-o',
-        sheet: 'cptools-sheet',
+        sheet: 'fa-file-excel-o',
         drive: 'fa-hdd-o',
         teams: 'fa-users',
     };
@@ -200,6 +214,8 @@ define(function() {
     // a different page (Drive, Settings, etc.) or try to create a new pad themselves. You can disable
     // the driveless mode by changing the following value to "false"
     AppConfig.allowDrivelessMode = true;
+
+    AppConfig.emojiAvatars = '🙈 🦀 🐞 🦋 🐬 🐋 🐢 🦉 🦆 🐧 🦡 🦘 🦨 🦦 🦥 🐼 🐻 🦝 🦓 🐄 💮️ 🐙️ 🌸️ 🌻️ 🐝️ 🐐 🦙 🦒 🐘 🦏 🐁 🐹 🐰 🦫 🦔 🐨 🐱 🐺 👺 👹 👽 👾 🤖'.split(/\s+/);
 
     return AppConfig;
 });

@@ -159,6 +159,14 @@
             margin-right: 5px;
             .tools_unselectable();
             cursor: default;
+            &.cp-cursor.cp-tippy-html {
+                .avatar_vars(20px);
+                background-color: var(--red);
+                font-size: @avatar-font-size;
+                &.animal {
+                    font-size: @avatar-font-size-animal;
+                }
+            }
         }
     }
     .kanban-item {
@@ -353,6 +361,8 @@
     }
 
     #cp-kanban-controls {
+        //background-color: fade(@toolbar-bg-color-active, 50%); // FIXME ?
+        //color: @cp_toolbar-fg;
         padding: 10px;
         display: flex;
         position: relative;
@@ -545,7 +555,7 @@
 
         #kanban-addboard {
             order: 2;
-            width: 300px;
+            width: 50px;
             margin: 10px 5px;
             border: 1px solid @cp_kanban-fg;
             color: @cp_kanban-fg;

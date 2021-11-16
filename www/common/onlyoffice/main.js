@@ -143,6 +143,15 @@ define([
                 }
                 sframeChan.event('EV_OO_EVENT', obj);
             });
+
+            // X2T
+            sframeChan.on('Q_OO_CONVERT', function (obj, cb) {
+                obj.modal = 'x2t';
+                Utils.initUnsafeIframe(obj, cb);
+            });
+
+
+
         };
         SFCommonO.start({
             hash: hash,

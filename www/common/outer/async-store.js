@@ -26,9 +26,9 @@ define([
 
     '/bower_components/chainpad-crypto/crypto.js',
     '/bower_components/chainpad/chainpad.dist.js',
-    '/bower_components/chainpad-netflux/chainpad-netflux.js',
-    '/bower_components/chainpad-listmap/chainpad-listmap.js',
-    '/bower_components/netflux-websocket/netflux-client.js',
+    'chainpad-netflux',
+    'chainpad-listmap',
+    'netflux-client',
     '/bower_components/nthen/index.js',
     '/bower_components/saferphore/index.js',
 ], function (ApiConfig, Sortify, UserObject, ProxyManager, Migrate, Hash, Util, Constants, Feedback,
@@ -274,9 +274,9 @@ define([
             }
 
             var pads = data.pads || data;
-            s.rpc.pin(pads, function (e, hash) {
+            s.rpc.pin(pads, function (e) {
                 if (e) { return void cb({error: e}); }
-                cb({hash: hash});
+                cb({});
             });
         };
 
@@ -289,9 +289,9 @@ define([
             if (!s.rpc) { return void cb({error: 'RPC_NOT_READY'}); }
 
             var pads = data.pads || data;
-            s.rpc.unpin(pads, function (e, hash) {
+            s.rpc.unpin(pads, function (e) {
                 if (e) { return void cb({error: e}); }
-                cb({hash: hash});
+                cb({});
             });
         };
 
@@ -394,9 +394,9 @@ define([
             if (!store.rpc) { return void cb({error: 'RPC_NOT_READY'}); }
 
             var list = getCanonicalChannelList(false);
-            store.rpc.reset(list, function (e, hash) {
+            store.rpc.reset(list, function (e) {
                 if (e) { return void cb(e); }
-                cb(null, hash);
+                cb(null);
             });
         };
 
@@ -657,7 +657,7 @@ define([
                     accountName: proxy.login_name || '',
                     offline: store.proxy && store.offline,
                     teams: teams,
-                    plan: account.plan,
+                    plan: store.ready ? (account.plan || '') : undefined,
                 }
             };
             cb(JSON.parse(JSON.stringify(metadata)));
@@ -775,7 +775,10 @@ define([
                     }
                 });
             }
-            return list;
+            return list.filter(function (channel) {
+                if (typeof(channel) !== 'string') { return; }
+                return [32, 48].indexOf(channel.length) !== -1;
+            });
         };
         var removeOwnedPads = function (waitFor) {
             // Delete owned pads
@@ -1306,9 +1309,14 @@ define([
             getAllStores().forEach(function (s) {
                 s.manager.getSecureFilesList(where).forEach(function (obj) {
                     var data = obj.data;
-                    if (channels.indexOf(data.channel) !== -1) { return; }
+                    if (channels.indexOf(data.channel || data.id) !== -1) { return; }
                     var id = obj.id;
-                    if (data.channel) { channels.push(data.channel); }
+                    if (data.channel) { channels.push(data.channel || data.id); }
+                    // Only include static links if "link" is requested
+                    if (data.static) {
+                        if (types.indexOf('link') !== -1) { list[id] = data; }
+                        return;
+                    }
                     var parsed = Hash.parsePadUrl(data.href || data.roHref);
                     if ((!types || types.length === 0 || types.indexOf(parsed.type) !== -1) &&
                         !isFiltered(parsed.type, data)) {
@@ -2053,8 +2061,17 @@ define([
             } catch (e) {
                 console.error(e);
             }
+
             // Tell all the owners that the pad was deleted from the server
-            var curvePublic = store.proxy.curvePublic;
+            var curvePublic;
+            try {
+                // users in noDrive mode don't have a proxy and
+                // unregistered users don't have a curvePublic
+                curvePublic = store.proxy.curvePublic;
+            } catch (err) {
+                console.error(err);
+                return;
+            }
             m.forEach(function (obj) {
                 var mb = JSON.parse(obj);
                 if (mb.curvePublic === curvePublic) { return; }
@@ -2142,6 +2159,8 @@ define([
             if (!data.channel) { return void cb({ error: 'ENOTFOUND'}); }
             if (!data.command) { return void cb({ error: 'EINVAL' }); }
             var s = getStore(data.teamId);
+            if (!s) { return void cb({ error: 'ENOTFOUND' }); }
+
             var otherChannels = data.channels;
             delete data.channels;
             s.rpc.setMetadata(data, function (err, res) {

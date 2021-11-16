@@ -15,15 +15,15 @@ define([
     '/common/common-notifier.js',
     '/customize/application_config.js',
     '/bower_components/alertifyjs/dist/js/alertify.js',
-    '/common/tippy/tippy.min.js',
+    '/lib/tippy/tippy.min.js',
     '/common/hyperscript.js',
     '/customize/loading.js',
     '/common/test.js',
 
-    '/common/jquery-ui/jquery-ui.min.js',
+    '/lib/jquery-ui/jquery-ui.min.js', // autocomplete widget
     '/bower_components/bootstrap-tokenfield/dist/bootstrap-tokenfield.js',
-    'css!/common/tippy/tippy.css',
-    'css!/common/jquery-ui/jquery-ui.min.css'
+    'css!/lib/tippy/tippy.css',
+    'css!/lib/jquery-ui/jquery-ui.min.css'
 ], function ($, Messages, Util, Hash, Notifier, AppConfig,
             Alertify, Tippy, h, Loading, Test) {
     var UI = {};
@@ -39,6 +39,19 @@ define([
     var setHTML = UI.setHTML = function (e, html) {
         e.innerHTML = html;
         return e;
+    };
+
+    UI.getDisplayName = function (name) {
+        return (typeof(name) === 'string'? name: "").trim() || Messages.anonymous;
+    };
+
+    // FIXME almost everywhere this is used would also be
+    // a good candidate for sframe-common's getMediatagFromHref
+    UI.mediaTag = function (src, key) {
+        return h('media-tag', {
+            src: src,
+            'data-crypto-key': 'cryptpad:' + key,
+        });
     };
 
     var findCancelButton = UI.findCancelButton = function (root) {
@@ -858,7 +871,8 @@ define([
     UI.passwordInput = function (opts, displayEye) {
         opts = opts || {};
         var attributes = merge({
-            type: 'password'
+            type: 'password',
+            autocomplete: 'new-password', // https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete#values
         }, opts);
 
         var input = h('input.cp-password-input', attributes);
@@ -1041,6 +1055,7 @@ define([
             var font = icon.indexOf('cptools') === 0 ? 'cptools' : 'fa';
             if (type === 'fileupload') { type = 'file'; }
             if (type === 'folderupload') { type = 'file'; }
+            if (type === 'link') { type = 'drive'; }
             var appClass = ' cp-icon cp-icon-color-'+type;
             $icon = $('<span>', {'class': font + ' ' + icon + appClass});
         }
@@ -1052,6 +1067,7 @@ define([
         if (!data) { return $icon; }
         var href = data.href || data.roHref;
         var type = data.type;
+        if (data.static) { type = 'link'; }
         if (!href && !type) { return $icon; }
 
         if (!type) { type = Hash.parsePadUrl(href).type; }

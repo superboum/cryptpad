@@ -156,9 +156,11 @@ define([
 
         var icons = Object.keys(users).map(function (key, i) {
             var data = users[key];
-            var name = data.displayName || data.name || Messages.anonymous;
-            var avatar = h('span.cp-usergrid-avatar.cp-avatar');
-            common.displayAvatar($(avatar), data.avatar, name);
+            var name = UI.getDisplayName(data.displayName || data.name);
+            var avatar = h('span.cp-usergrid-avatar.cp-avatar', {
+                'aria-hidden': true,
+            });
+            common.displayAvatar($(avatar), data.avatar, name, Util.noop, data.uid);
             var removeBtn, el;
             if (config.remove) {
                 removeBtn = h('span.fa.fa-times');
@@ -526,6 +528,7 @@ define([
         var button;
         var sframeChan = common.getSframeChannel();
         var appType = (common.getMetadataMgr().getMetadata().type || 'pad').toUpperCase();
+        data = data || {};
         switch (type) {
             case 'export':
                 button = $('<button>', {
@@ -648,14 +651,17 @@ define([
                 if (!AppConfig.enableTemplates) { return; }
                 if (!common.isLoggedIn()) { return; }
                 button = $('<button>', {
-                    'class': 'fa fa-bookmark cp-toolbar-icon-template',
+                    'class': 'cptools cptools-new-template cp-toolbar-icon-template',
                 }).append($('<span>', {'class': 'cp-toolbar-drawer-element'}).text(Messages.saveTemplateButton));
-                if (data.rt) {
+                if (data.rt || data.callback) {
                     button
                     .click(function () {
                         var title = data.getTitle() || document.title;
                         var todo = function (val) {
                             if (typeof(val) !== "string") { return; }
+                            if (data.callback) {
+                                return void data.callback(val);
+                            }
                             var toSave = data.rt.getUserDoc();
                             if (val.trim()) {
                                 val = val.trim();
@@ -752,7 +758,7 @@ define([
                     //title: Messages.previewButtonTitle, // TODO display if the label text is collapsed
                 }, [
                     h('i.fa.fa-eye'),
-                    h('span.cp-toolbar-name', Messages.share_linkOpen)
+                    h('span.cp-toolbar-name', Messages.toolbar_preview)
                 ])).click(common.prepareFeedback(type));
                 break;
             case 'print':
@@ -835,8 +841,8 @@ define([
                 button = $(h('button.cp-toolbar-tools', {
                     //title: data.title || '', // TODO display if the label text is collapsed
                 }, [
-                    h('i.fa.fa-wrench'),
-                    h('span.cp-toolbar-name', Messages.toolbar_tools)
+                    h('i.fa.' + (data.icon || 'fa-wrench')),
+                    h('span.cp-toolbar-name', data.text || Messages.toolbar_tools)
                 ])).click(common.prepareFeedback(type));
                 /*
                 window.setTimeout(function () {
@@ -902,7 +908,6 @@ define([
                 button
                 .click(common.prepareFeedback(type))
                 .click(function () {
-                    data = data || {};
                     if (typeof(data.load) !== "function" || typeof(data.make) !== "function") {
                         return;
                     }
@@ -910,7 +915,6 @@ define([
                 });
                 break;
             default:
-                data = data || {};
                 var drawerCls = data.drawer === false ? '' : '.cp-toolbar-drawer-element';
                 var icon = data.icon || "fa-question";
                 button = $(h('button', {
@@ -919,10 +923,13 @@ define([
                 }, [
                     h('i.fa.' + icon),
                     h('span.cp-toolbar-name'+drawerCls, data.text)
-                ])).click(common.prepareFeedback(data.name || 'DEFAULT'));
-                if (callback) {
-                    button.click(callback);
-                }
+                ]));
+                var feedbackHandler = common.prepareFeedback(data.name || 'DEFAULT');
+                button[0].addEventListener('click', function () {
+                    feedbackHandler();
+                    if (typeof(callback) !== 'function') { return; }
+                    callback();
+                });
                 if (data.style) { button.attr('style', data.style); }
                 if (data.id) { button.attr('id', data.id); }
                 if (data.hiddenReadOnly) { button.addClass('cp-hidden-if-readonly'); }
@@ -1032,10 +1039,19 @@ define([
                 icon: 'fa-picture-o',
                 action: function () {
                     var _cfg = {
-                        types: ['file'],
+                        types: ['file', 'link'],
                         where: ['root']
                     };
                     common.openFilePicker(_cfg, function (data) {
+                        // Embed links
+                        if (data.static) {
+                            var a = h('a', {
+                                href: data.href
+                            }, data.name);
+                            cfg.embed(a, data);
+                            return;
+                        }
+                        // Embed files
                         if (data.type !== 'file') {
                             console.log("Unexpected data type picked " + data.type);
                             return;
@@ -1045,8 +1061,10 @@ define([
                         var privateDat = common.getMetadataMgr().getPrivateData();
                         var origin = privateDat.fileHost || privateDat.origin;
                         var src = data.src = data.src.slice(0,1) === '/' ? origin + data.src : data.src;
-                        cfg.embed($('<media-tag src="' + src +
-                            '" data-crypto-key="cryptpad:' + data.key + '"></media-tag>'), data);
+                        cfg.embed(h('media-tag', {
+                            src: src,
+                            'data-crypto-key': 'cryptpad:' + data.key,
+                        }), data);
                     });
 
                 }
@@ -1424,18 +1442,25 @@ define([
             window.setTimeout(function () { $innerblock.hide(); }, 0);
         };
 
-        config.options.forEach(function (o) {
-            if (!isValidOption(o)) { return; }
-            if (isElement(o)) { return $innerblock.append($(o)); }
-            var $el = $('<' + o.tag + '>', o.attributes || {}).html(o.content || '');
-            $el.appendTo($innerblock);
-            if (typeof(o.action) === 'function') {
-                $el.click(function (e) {
-                    var close = o.action(e);
-                    if (close) { hide(); }
-                });
-            }
-        });
+        var setOptions = function (options) {
+            options.forEach(function (o) {
+                if (!isValidOption(o)) { return; }
+                if (isElement(o)) { return $innerblock.append($(o)); }
+                var $el = $('<' + o.tag + '>', o.attributes || {}).html(o.content || '');
+                $el.appendTo($innerblock);
+                if (typeof(o.action) === 'function') {
+                    $el.click(function (e) {
+                        var close = o.action(e);
+                        if (close) { hide(); }
+                    });
+                }
+            });
+        };
+        setOptions(config.options);
+        $container.setOptions = function (options) {
+            $innerblock.empty();
+            setOptions(options);
+        };
 
         $container.append($button).append($innerblock);
 
@@ -1566,16 +1591,20 @@ define([
                 }, 1000);
             });
 
-            $container.setValue = function (val, name) {
+            $container.setValue = function (val, name, sync) {
                 value = val;
                 var $val = $innerblock.find('[data-value="'+val+'"]');
                 var textValue = name || $val.html() || val;
+                if (sync) {
+                    $button.find('.cp-dropdown-button-title').html(textValue);
+                    return;
+                }
                 setTimeout(function () {
                     $button.find('.cp-dropdown-button-title').html(textValue);
                 });
             };
             $container.getValue = function () {
-                return value || '';
+                return typeof(value) === "undefined" ? '' : value;
             };
         }
 
@@ -1884,8 +1913,11 @@ define([
                 },
                 content: h('span', Messages.logoutEverywhere),
                 action: function () {
-                    Common.getSframeChannel().query('Q_LOGOUT_EVERYWHERE', null, function () {
-                        Common.gotoURL(origin + '/');
+                    UI.confirm(Messages.settings_logoutEverywhereConfirm, function (yes) {
+                        if (!yes) { return; }
+                        Common.getSframeChannel().query('Q_LOGOUT_EVERYWHERE', null, function () {
+                            Common.gotoURL(origin + '/');
+                        });
                     });
                 },
             });
@@ -1977,9 +2009,12 @@ define([
         var loadingAvatar;
         var to;
         var oldUrl = '';
+        var oldUid;
+        var oldName;
         var updateButton = function () {
             var myData = metadataMgr.getUserData();
             var privateData = metadataMgr.getPrivateData();
+            var uid = myData.uid;
             if (!priv.plan && privateData.plan) {
                 config.$initBlock.empty();
                 metadataMgr.off('change', updateButton);
@@ -1994,18 +2029,19 @@ define([
                 return;
             }
             loadingAvatar = true;
-            var newName = myData.name;
+            var newName = UI.getDisplayName(myData.name);
             var url = myData.avatar;
-            $displayName.text(newName || Messages.anonymous);
-            if (accountName && oldUrl !== url) {
+            $displayName.text(newName);
+            if ((accountName && oldUrl !== url) || !accountName && uid !== oldUid || oldName !== newName) {
                 $avatar.html('');
-                Common.displayAvatar($avatar, url,
-                        newName || Messages.anonymous, function ($img) {
+                Common.displayAvatar($avatar, url, newName, function ($img) {
                     oldUrl = url;
+                    oldUid = uid;
+                    oldName = newName;
                     $userAdmin.find('> button').removeClass('cp-avatar');
                     if ($img) { $userAdmin.find('> button').addClass('cp-avatar'); }
                     loadingAvatar = false;
-                });
+                }, uid);
                 return;
             }
             loadingAvatar = false;
@@ -2054,6 +2090,7 @@ define([
     };
 
 
+
     UIElements.createNewPadModal = function (common) {
         // if in drive, show new pad modal instead
         if ($(".cp-app-drive-element-row.cp-app-drive-new-ghost").length !== 0) {
@@ -2073,19 +2110,14 @@ define([
 
         var $container = $('<div>');
         var i = 0;
+
         var types = AppConfig.availablePadTypes.filter(function (p) {
-            if (p === 'drive') { return; }
-            if (p === 'teams') { return; }
-            if (p === 'contacts') { return; }
-            if (p === 'todo') { return; }
-            if (p === 'file') { return; }
-            if (p === 'accounts') { return; }
-            if (p === 'calendar') { return; }
-            if (p === 'poll') { return; } // Replaced by forms
+            if (AppConfig.hiddenTypes.indexOf(p) !== -1) { return; }
             if (!common.isLoggedIn() && AppConfig.registeredOnlyTypes &&
                 AppConfig.registeredOnlyTypes.indexOf(p) !== -1) { return; }
             return true;
         });
+
         types.forEach(function (p) {
             var $element = $('<li>', {
                 'class': 'cp-icons-element',
@@ -2098,6 +2130,12 @@ define([
                 $modal.hide();
                 common.openURL('/' + p + '/');
             });
+            var premium = common.checkRestrictedApp(p);
+            if (premium < 0) {
+                $element.addClass('cp-app-hidden cp-app-disabled');
+            } else if (premium === 0) {
+                $element.addClass('cp-app-disabled');
+            }
         });
 
         var selected = -1;
@@ -2241,6 +2279,7 @@ define([
 
         var type = metadataMgr.getMetadataLazy().type || privateData.app;
         var fromFileData = privateData.fromFileData;
+        var fromContent = privateData.fromContent;
 
         var $body = $('body');
         var $creationContainer = $('<div>', { id: 'cp-creation-container' }).appendTo($body);
@@ -2260,7 +2299,11 @@ define([
 
         // Title
         //$creation.append(h('h2.cp-creation-title', Messages.newButtonTitle));
-        var newPadH3Title = Messages['button_new' + type]; // Messages.button_newform
+        var newPadH3Title = Messages._getKey('creation_new',[Messages.type[type]]);
+
+        var early = common.checkRestrictedApp(type);
+        var domain = Config.httpUnsafeOrigin || 'CryptPad';
+        if (/^http/.test(domain)) { domain = domain.replace(/^https?\:\/\//, ''); }
 
         var title = h('div.cp-creation-title', [
             UI.getFileIcon({type: type})[0],
@@ -2270,6 +2313,12 @@ define([
             ])
         ]);
         $creation.append(title);
+
+        if (early === 1) {
+            $creation.append(h('div.cp-creation-early.alert.alert-warning', Messages._getKey('premiumAccess', [
+                domain
+            ])));
+        }
         //var colorClass = 'cp-icon-color-'+type;
         //$creation.append(h('h2.cp-creation-title.'+colorClass, Messages.newButtonTitle));
 
@@ -2293,6 +2342,7 @@ define([
             var teams = Object.keys(privateData.teams).map(function (id) {
                 var data = privateData.teams[id];
                 var avatar = h('span.cp-creation-team-avatar.cp-avatar');
+                // We assume that teams always have a non-empty name, so we don't need a UID
                 common.displayAvatar($(avatar), data.avatar, data.name);
                 return h('div.cp-creation-team', {
                     'data-id': id,
@@ -2421,14 +2471,14 @@ define([
                 }
                 return b.used - a.used;
             });
-            if (!appCfg.noTemplates) {
+            /*if (!appCfg.noTemplates) {
                 allData.unshift({
                     name: Messages.creation_newTemplate,
                     id: -1,
                     //icon: h('span.fa.fa-bookmark')
                     icon: h('span.cptools.cptools-new-template')
                 });
-            }
+            }*/
             if (!privateData.newTemplate) {
                 allData.unshift({
                     name: Messages.creation_noTemplate,
@@ -2495,6 +2545,14 @@ define([
                     if (err || (res && res.error)) { return; }
                     todo(res.data);
                 });
+            }
+            else if (fromContent) {
+                allData = [{
+                    name: fromContent.title,
+                    id: 0,
+                    icon: h('span.cptools.cptools-poll'),
+                }];
+                redraw(0);
             }
             else {
                 redraw(0);
@@ -3022,12 +3080,69 @@ define([
         UI.proposal(content, todo);
     };
 
+    UIElements.displayOpenLinkModal = function (common, data, dismiss) {
+        var name = Util.fixHTML(data.title);
+        var url = data.href;
+        var user = data.name;
+
+        var content = h('div', [
+            UI.setHTML(h('p'), Messages._getKey('notification_openLink', [name, user])),
+            h('pre.cp-link-preview', url),
+            UIElements.getVerifiedFriend(common, data.curve, user)
+        ]);
+        var clicked = false;
+        var modal;
+        var buttons = [{
+            name: Messages.friendRequest_later,
+            onClick: function () {
+                if (clicked) { return true; }
+                clicked = true;
+                Feedback.send('LINK_RECEIVED_LATER');
+            },
+            keys: [27]
+        }, {
+            className: 'primary',
+            name: Messages.fc_open,
+            onClick: function () {
+                if (clicked) { return true; }
+                clicked = true;
+                common.openUnsafeURL(url);
+                Feedback.send("LINK_RECEIVED_OPEN");
+            },
+            keys: [13]
+        }, {
+            className: 'primary',
+            name: Messages.toolbar_storeInDrive,
+            onClick: function () {
+                if (clicked) { return; }
+                clicked = true;
+                common.getSframeChannel().query("Q_DRIVE_USEROBJECT", {
+                    cmd: "addLink",
+                    data: {
+                        name: name,
+                        href: url,
+                        path: ['root']
+                    }
+                }, function () {
+                    modal.closeModal();
+                    dismiss();
+                    Feedback.send("LINK_RECEIVED_STORE");
+                });
+                return true;
+            },
+            keys: [[13, 'ctrl']]
+        }];
+        var _modal = UI.dialog.customModal(content, {buttons: buttons});
+        modal = UI.openCustomModal(_modal);
+        return modal;
+    };
+
     UIElements.displayAddOwnerModal = function (common, data) {
         var priv = common.getMetadataMgr().getPrivateData();
         var sframeChan = common.getSframeChannel();
         var msg = data.content.msg;
 
-        var name = Util.fixHTML(msg.content.user.displayName) || Messages.anonymous;
+        var name = Util.fixHTML(UI.getDisplayName(msg.content.user.displayName));
         var title = Util.fixHTML(msg.content.title);
 
         var text = Messages._getKey('owner_add', [name, title]);
@@ -3159,7 +3274,7 @@ define([
         var sframeChan = common.getSframeChannel();
         var msg = data.content.msg;
 
-        var name = Util.fixHTML(msg.content.user.displayName) || Messages.anonymous;
+        var name = Util.fixHTML(UI.getDisplayName(msg.content.user.displayName));
         var title = Util.fixHTML(msg.content.title);
 
         var text = Messages._getKey('owner_team_add', [name, title]);
@@ -3274,13 +3389,15 @@ define([
         var verified = h('p');
         var $verified = $(verified);
 
+        name = UI.getDisplayName(name);
         if (priv.friends && priv.friends[curve]) {
             $verified.addClass('cp-notifications-requestedit-verified');
             var f = priv.friends[curve];
             $verified.append(h('span.fa.fa-certificate'));
             var $avatar = $(h('span.cp-avatar')).appendTo($verified);
-            $verified.append(h('p', Messages._getKey('isContact', [f.displayName])));
-            common.displayAvatar($avatar, f.avatar, f.displayName);
+            name = UI.getDisplayName(f.displayName);
+            $verified.append(h('p', Messages._getKey('isContact', [name])));
+            common.displayAvatar($avatar, f.avatar, name, Util.noop, f.uid);
         } else {
             $verified.append(Messages._getKey('isNotContact', [name]));
         }
@@ -3290,7 +3407,7 @@ define([
     UIElements.displayInviteTeamModal = function (common, data) {
         var msg = data.content.msg;
 
-        var name = Util.fixHTML(msg.content.user.displayName) || Messages.anonymous;
+        var name = Util.fixHTML(UI.getDisplayName(msg.content.user.displayName));
         var teamName = Util.fixHTML(Util.find(msg, ['content', 'team', 'metadata', 'name']) || '');
 
         var verified = UIElements.getVerifiedFriend(common, msg.author, name);
@@ -3374,7 +3491,8 @@ define([
                 name: f.displayName,
                 curvePublic: f.curvePublic,
                 profile: f.profile,
-                notifications: f.notifications
+                notifications: f.notifications,
+                uid: f.uid,
             };
         });
     };
@@ -3473,7 +3591,7 @@ define([
         };
         // Set the value to receive from the autocomplete
         var toInsert = function (data, key) {
-            var name = data.name.replace(/[^a-zA-Z0-9]+/g, "-");
+            var name = UI.getDisplayName(data.name.replace(/[^a-zA-Z0-9]+/g, "-"));
             return "[@"+name+"|"+key+"]";
         };
 
@@ -3526,18 +3644,20 @@ define([
                     var avatar = h('span.cp-avatar', {
                         contenteditable: false
                     });
-                    common.displayAvatar($(avatar), data.avatar, data.name);
+
+                    var displayName = UI.getDisplayName(data.name);
+                    common.displayAvatar($(avatar), data.avatar, displayName);
                     return h('span.cp-mentions', {
                         'data-curve': data.curvePublic,
                         'data-notifications': data.notifications,
                         'data-profile': data.profile,
-                        'data-name': Util.fixHTML(data.name),
+                        'data-name': Util.fixHTML(displayName),
                         'data-avatar': data.avatar || "",
                     }, [
                         avatar,
                         h('span.cp-mentions-name', {
                             contenteditable: false
-                        }, data.name)
+                        }, displayName)
                     ]);
                 };
             }
@@ -3569,7 +3689,7 @@ define([
                     }).map(function (key) {
                         var data = sources[key];
                         return {
-                            label: data.name,
+                            label: UI.getDisplayName(data.name),
                             value: key
                         };
                     });
@@ -3604,10 +3724,12 @@ define([
             var obj = sources[key];
             if (!obj) { return; }
             var avatar = h('span.cp-avatar');
-            common.displayAvatar($(avatar), obj.avatar, obj.name);
+            var displayName = UI.getDisplayName(obj.name);
+
+            common.displayAvatar($(avatar), obj.avatar, displayName, Util.noop, obj.uid);
             var li = h('li.cp-autocomplete-value', [
                 avatar,
-                h('span', obj.name)
+                h('span', displayName),
             ]);
             return $(li).appendTo(ul);
         };
@@ -3617,6 +3739,28 @@ define([
         var size = $container.outerHeight();
         var pos = el.getBoundingClientRect();
         return (pos.bottom < size) && (pos.y > 0);
+    };
+
+    UIElements.is24h = function () {
+        try {
+            return !new Intl.DateTimeFormat(navigator.language, { hour: 'numeric' }).format(0).match(/AM/);
+        } catch (e) {}
+        return false;
+    };
+
+    UIElements.fixInlineBRs = function (htmlString) {
+        if (!htmlString && typeof(htmlString) === 'string') { return; }
+        var lines = htmlString.split('<br>');
+        if (lines.length === 1) { return lines; }
+        var len = lines.length - 1;
+        var result = [];
+        for (var i = 0; i <= len; i++) {
+            result.push(lines[i]);
+            if (i < len) {
+                result.push(h('br'));
+            }
+        }
+        return result;
     };
 
     UIElements.openSnapshotsModal = function (common, load, make, remove) {

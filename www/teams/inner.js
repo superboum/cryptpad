@@ -693,6 +693,8 @@ define([
             redrawRoster(common);
         });
     };
+
+    var getDisplayName = UI.getDisplayName;
     var makeMember = function (common, data, me, roster) {
         if (!data.curvePublic) { return; }
 
@@ -701,11 +703,12 @@ define([
             return user.role === "OWNER" && user.curvePublic !== me.curvePublic && !user.pendingOwner;
         });
 
+        var displayName = getDisplayName(data.displayName);
         // Avatar
         var avatar = h('span.cp-avatar.cp-team-member-avatar');
-        common.displayAvatar($(avatar), data.avatar, data.displayName);
+        common.displayAvatar($(avatar), data.avatar, displayName, Util.noop, data.uid);
         // Name
-        var name = h('span.cp-team-member-name', data.displayName);
+        var name = h('span.cp-team-member-name', displayName);
         if (data.pendingOwner) {
             $(name).append(h('em', {
                 title: Messages.team_pendingOwnerTitle
@@ -768,7 +771,7 @@ define([
                     $(demote).hide();
                     describeUser(common, data.curvePublic, {
                         role: role
-                    }, promote);
+                    }, demote);
                 };
                 if (isMe) {
                     return void UI.confirm(Messages.team_demoteMeConfirm, function (yes) {
@@ -789,7 +792,7 @@ define([
                 title: Messages.team_rosterKick
             });
             $(remove).click(function () {
-                UI.confirm(Messages._getKey('team_kickConfirm', [Util.fixHTML(data.displayName)]), function (yes) {
+                UI.confirm(Messages._getKey('team_kickConfirm', [Util.fixHTML(displayName)]), function (yes) {
                     if (!yes) { return; }
                     APP.module.execCommand('REMOVE_USER', {
                         pending: data.pending,
@@ -901,22 +904,23 @@ define([
             $header.append(invite);
         }
 
-        if (me && (me.role !== 'OWNER')) {
-            var leave = h('button.cp-online.btn.btn-danger', Messages.team_leaveButton);
-            $(leave).click(function () {
-                UI.confirm(Messages.team_leaveConfirm, function (yes) {
-                    if (!yes) { return; }
-                    APP.module.execCommand('LEAVE_TEAM', {
-                        teamId: APP.team
-                    }, function (obj) {
-                        if (obj && obj.error) {
-                            return void UI.warn(Messages.error);
-                        }
-                    });
+        var leave = h('button.cp-online.btn.btn-danger', Messages.team_leaveButton);
+        $(leave).click(function () {
+            if (me && me.role === 'OWNER') {
+                return void UI.alert(Messages.team_leaveOwner);
+            }
+            UI.confirm(Messages.team_leaveConfirm, function (yes) {
+                if (!yes) { return; }
+                APP.module.execCommand('LEAVE_TEAM', {
+                    teamId: APP.team
+                }, function (obj) {
+                    if (obj && obj.error) {
+                        return void UI.warn(Messages.error);
+                    }
                 });
             });
-            $header.append(leave);
-        }
+        });
+        $header.append(leave);
 
         var table = h('button.btn.btn-primary', Messages.teams_table);
         $(table).click(function (e) {
@@ -1072,6 +1076,9 @@ define([
                     metadata: obj
                 }, function () {
                     $avatar.empty();
+                    // the UI is not supposed to allow admins to remove team names
+                    // so we expect that it will be there. Failing that the initials
+                    // from the default name will be displayed
                     common.displayAvatar($avatar, data.url);
                 });
             });
@@ -1092,8 +1099,8 @@ define([
             if (!val) {
                 var $img = $('<img>', {
                     src: '/customize/images/avatar.png',
-                    title: Messages.profile_avatar,
-                    alt: 'Avatar'
+                    title: Messages.profile_defaultAlt,
+                    alt: Messages.profile_defaultAlt,
                 });
                 var mt = h('media-tag', $img[0]);
                 $avatar.append(mt);
@@ -1130,7 +1137,7 @@ define([
                         Feedback.send('FULL_TEAMDRIVE_EXPORT_COMPLETE');
                         saveAs(blob, filename);
                     }, errors);
-                }, ui.update, common.getCache);
+                }, ui.update, common.getCache, common.getSframeChannel());
                 ui.onCancel(function() {
                     ui.close();
                     bu.stop();
@@ -1190,10 +1197,11 @@ define([
 
     var displayUser = function (common, data) {
         var avatar = h('span.cp-teams-invite-from-avatar.cp-avatar');
-        common.displayAvatar($(avatar), data.avatar, data.displayName);
+        var name = getDisplayName(data.displayName);
+        common.displayAvatar($(avatar), data.avatar, name);
         return h('div.cp-teams-invite-from-author', [
             avatar,
-            h('span.cp-teams-invite-from-name', data.displayName)
+            h('span.cp-teams-invite-from-name', name)
         ]);
     };
 
@@ -1315,23 +1323,31 @@ define([
             });
         };
 
+        var isValidInvitationLinkContent = function (json) {
+            if (!json) { return false; }
+            if (json.error || !Object.keys(json).length) { return false; }
+            if (!json.author) { return false; }
+            return true;
+        };
+
         nThen(function (waitFor) {
             // Get preview content.
             sframeChan.query('Q_ANON_GET_PREVIEW_CONTENT', { seeds: seeds }, waitFor(function (err, json) {
-                if (json && (json.error || !Object.keys(json).length)) {
+                if (!isValidInvitationLinkContent(json)) {
                     $(errorBlock).text(Messages.team_inviteInvalidLinkError).show();
                     waitFor.abort();
                     $div.empty();
                     return;
                 }
+                // FIXME nothing guarantees that teamName or author.displayName exist in json
                 $div.empty();
                 $div.append(h('div.cp-teams-invite-from', [
-                    Messages.team_inviteFrom || 'From:',
+                    Messages.team_inviteFrom,
                     displayUser(common, json.author)
                 ]));
                 $div.append(UI.setHTML(h('p.cp-teams-invite-to'),
                     Messages._getKey('team_inviteFromMsg',
-                    [Util.fixHTML(json.author.displayName),
+                    [Util.fixHTML(getDisplayName(json.author.displayName)),
                     Util.fixHTML(json.teamName)])));
                 if (json.message) {
                     $div.append(h('div.cp-teams-invite-message', json.message));
@@ -1448,10 +1464,10 @@ define([
             // Update the name in the user menu
             var $displayName = $bar.find('.' + Toolbar.constants.username);
             metadataMgr.onChange(function () {
-                var name = metadataMgr.getUserData().name || Messages.anonymous;
+                var name = getDisplayName(metadataMgr.getUserData().name);
                 $displayName.text(name);
             });
-            $displayName.text(user.name || Messages.anonymous);
+            $displayName.text(getDisplayName(user.name));
 
             // Load the Team module
             var onEvent = function (obj) {

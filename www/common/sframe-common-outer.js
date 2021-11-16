@@ -72,6 +72,8 @@ define([
         var SFrameChannel;
         var sframeChan;
         var SecureIframe;
+        var UnsafeIframe;
+        var OOIframe;
         var Messaging;
         var Notifier;
         var Utils = {
@@ -98,6 +100,8 @@ define([
                 '/common/cryptget.js',
                 '/common/outer/worker-channel.js',
                 '/secureiframe/main.js',
+                '/unsafeiframe/main.js',
+                '/common/onlyoffice/ooiframe.js',
                 '/common/common-messaging.js',
                 '/common/common-notifier.js',
                 '/common/common-hash.js',
@@ -112,7 +116,7 @@ define([
                 '/common/test.js',
                 '/common/userObject.js',
             ], waitFor(function (_CpNfOuter, _Cryptpad, _Crypto, _Cryptget, _SFrameChannel,
-            _SecureIframe, _Messaging, _Notifier, _Hash, _Util, _Realtime, _Notify,
+            _SecureIframe, _UnsafeIframe, _OOIframe, _Messaging, _Notifier, _Hash, _Util, _Realtime, _Notify,
             _Constants, _Feedback, _LocalStore, _Cache, _AppConfig, _Test, _UserObject) {
                 CpNfOuter = _CpNfOuter;
                 Cryptpad = _Cryptpad;
@@ -120,6 +124,8 @@ define([
                 Cryptget = _Cryptget;
                 SFrameChannel = _SFrameChannel;
                 SecureIframe = _SecureIframe;
+                UnsafeIframe = _UnsafeIframe;
+                OOIframe = _OOIframe;
                 Messaging = _Messaging;
                 Notifier = _Notifier;
                 Utils.Hash = _Hash;
@@ -248,7 +254,11 @@ define([
 
             sframeChan.on('EV_CACHE_PUT', function (x) {
                 Object.keys(x).forEach(function (k) {
-                    localStorage['CRYPTPAD_CACHE|' + k] = x[k];
+                    try {
+                        localStorage['CRYPTPAD_CACHE|' + k] = x[k];
+                    } catch (err) {
+                        console.error(err);
+                    }
                 });
             });
             sframeChan.on('EV_LOCALSTORE_PUT', function (x) {
@@ -257,7 +267,11 @@ define([
                         delete localStorage['CRYPTPAD_STORE|' + k];
                         return;
                     }
-                    localStorage['CRYPTPAD_STORE|' + k] = x[k];
+                    try {
+                        localStorage['CRYPTPAD_STORE|' + k] = x[k];
+                    } catch (err) {
+                        console.error(err);
+                    }
                 });
             });
 
@@ -296,6 +310,13 @@ define([
                         }
                     }));
                 };
+
+                if (sessionStorage.CP_formExportSheet && parsed.type === 'sheet') {
+                    try {
+                        Cryptpad.fromContent = JSON.parse(sessionStorage.CP_formExportSheet);
+                    } catch (e) { console.error(e); }
+                    delete sessionStorage.CP_formExportSheet;
+                }
 
                 // New pad options
                 var options = parsed.getOptions();
@@ -571,6 +592,8 @@ define([
             var edPublic, curvePublic, notifications, isTemplate;
             var settings = {};
             var isSafe = ['debug', 'profile', 'drive', 'teams', 'calendar', 'file'].indexOf(currentPad.app) !== -1;
+            var isOO = ['sheet', 'doc', 'presentation'].indexOf(parsed.type) !== -1;
+            var ooDownloadData = {};
 
             var isDeleted = isNewFile && currentPad.hash.length > 0;
             if (isDeleted) {
@@ -618,6 +641,7 @@ define([
                         prefersDriveRedirect: Utils.LocalStore.getDriveRedirectPreference(),
                         isPresent: parsed.hashData && parsed.hashData.present,
                         isEmbed: parsed.hashData && parsed.hashData.embed,
+                        canEdit: hashes && hashes.editHash,
                         oldVersionHash: parsed.hashData && parsed.hashData.version < 2, // password
                         isHistoryVersion: parsed.hashData && parsed.hashData.versionHash,
                         notifications: notifs,
@@ -630,11 +654,13 @@ define([
                         channel: secret.channel,
                         enableSF: localStorage.CryptPad_SF === "1", // TODO to remove when enabled by default
                         devMode: localStorage.CryptPad_dev === "1",
-                        fromFileData: Cryptpad.fromFileData ? {
+                        fromFileData: Cryptpad.fromFileData ? (isOO ? Cryptpad.fromFileData : {
                             title: Cryptpad.fromFileData.title
-                        } : undefined,
+                        }) : undefined,
+                        fromContent: Cryptpad.fromContent,
                         burnAfterReading: burnAfterReading,
-                        storeInTeam: Cryptpad.initialTeam || (Cryptpad.initialPath ? -1 : undefined)
+                        storeInTeam: Cryptpad.initialTeam || (Cryptpad.initialPath ? -1 : undefined),
+                        supportsWasm: Utils.Util.supportsWasm()
                     };
                     if (window.CryptPad_newSharedFolder) {
                         additionalPriv.newSharedFolder = window.CryptPad_newSharedFolder;
@@ -649,6 +675,17 @@ define([
                         additionalPriv.registeredOnly = true;
                     }
 
+                    var priv = metaObj.priv;
+                    var _plan = typeof(priv.plan) === "undefined" ? Utils.LocalStore.getPremium() : priv.plan;
+                    var p = Utils.Util.checkRestrictedApp(parsed.type, AppConfig,
+                              Utils.Constants.earlyAccessApps, _plan, additionalPriv.loggedIn);
+                    if (p === 0 || p === -1) {
+                        additionalPriv.premiumOnly = true;
+                    }
+                    if (p === -2) {
+                        additionalPriv.earlyAccessBlocked = true;
+                    }
+
                     if (isSafe) {
                         additionalPriv.hashes = hashes;
                         additionalPriv.password = password;
@@ -658,6 +695,10 @@ define([
 
                     if (cfg.addData) {
                         cfg.addData(metaObj.priv, Cryptpad, metaObj.user, Utils);
+                    }
+
+                    if (metaObj && metaObj.priv && typeof(metaObj.priv.plan) === "string") {
+                        Utils.LocalStore.setPremium(metaObj.priv.plan);
                     }
 
                     sframeChan.event('EV_METADATA_UPDATE', metaObj);
@@ -1031,6 +1072,51 @@ define([
                         }
                     }, cb);
                 });
+                sframeChan.on('Q_GET_HISTORY_RANGE', function (data, cb) {
+                    var nSecret = secret;
+                    if (cfg.isDrive) {
+                        // Shared folder or user hash or fs hash
+                        var hash = Utils.LocalStore.getUserHash() || Utils.LocalStore.getFSHash();
+                        if (data.sharedFolder) { hash = data.sharedFolder.hash; }
+                        if (hash) {
+                            var password = (data.sharedFolder && data.sharedFolder.password) || undefined;
+                            nSecret = Utils.Hash.getSecrets('drive', hash, password);
+                        }
+                    }
+                    if (data.href) {
+                        var _parsed = Utils.Hash.parsePadUrl(data.href);
+                        nSecret = Utils.Hash.getSecrets(_parsed.type, _parsed.hash, data.password);
+                    }
+                    if (data.isDownload && ooDownloadData[data.isDownload]) {
+                        var ooData = ooDownloadData[data.isDownload];
+                        delete ooDownloadData[data.isDownload];
+                        nSecret = Utils.Hash.getSecrets('sheet', ooData.hash, ooData.password);
+                    }
+                    var channel = nSecret.channel;
+                    var validate = nSecret.keys.validateKey;
+                    var crypto = Crypto.createEncryptor(nSecret.keys);
+                    Cryptpad.getHistoryRange({
+                        channel: data.channel || channel,
+                        validateKey: validate,
+                        toHash: data.toHash,
+                        lastKnownHash: data.lastKnownHash
+                    }, function (data) {
+                        cb({
+                            isFull: data.isFull,
+                            messages: data.messages.map(function (obj) {
+                                // The 3rd parameter "true" means we're going to skip signature validation.
+                                // We don't need it since the message is already validated serverside by hk
+                                return {
+                                    msg: crypto.decrypt(obj.msg, true, true),
+                                    serverHash: obj.serverHash,
+                                    author: obj.author,
+                                    time: obj.time
+                                };
+                            }),
+                            lastKnownHash: data.lastKnownHash
+                        });
+                    });
+                });
             };
             addCommonRpc(sframeChan, isSafe);
 
@@ -1209,6 +1295,7 @@ define([
             });
 
             sframeChan.on('Q_SAVE_AS_TEMPLATE', function (data, cb) {
+                data.teamId = Cryptpad.initialTeam;
                 Cryptpad.saveAsTemplate(Cryptget.put, data, cb);
             });
 
@@ -1269,46 +1356,6 @@ define([
                     });
                     nt(function () {
                         cb(decryptedMsgs);
-                    });
-                });
-            });
-            sframeChan.on('Q_GET_HISTORY_RANGE', function (data, cb) {
-                var nSecret = secret;
-                if (cfg.isDrive) {
-                    // Shared folder or user hash or fs hash
-                    var hash = Utils.LocalStore.getUserHash() || Utils.LocalStore.getFSHash();
-                    if (data.sharedFolder) { hash = data.sharedFolder.hash; }
-                    if (hash) {
-                        var password = (data.sharedFolder && data.sharedFolder.password) || undefined;
-                        nSecret = Utils.Hash.getSecrets('drive', hash, password);
-                    }
-                }
-                if (data.href) {
-                    var _parsed = Utils.Hash.parsePadUrl(data.href);
-                    nSecret = Utils.Hash.getSecrets(_parsed.type, _parsed.hash, data.password);
-                }
-                var channel = nSecret.channel;
-                var validate = nSecret.keys.validateKey;
-                var crypto = Crypto.createEncryptor(nSecret.keys);
-                Cryptpad.getHistoryRange({
-                    channel: data.channel || channel,
-                    validateKey: validate,
-                    toHash: data.toHash,
-                    lastKnownHash: data.lastKnownHash
-                }, function (data) {
-                    cb({
-                        isFull: data.isFull,
-                        messages: data.messages.map(function (obj) {
-                            // The 3rd parameter "true" means we're going to skip signature validation.
-                            // We don't need it since the message is already validated serverside by hk
-                            return {
-                                msg: crypto.decrypt(obj.msg, true, true),
-                                serverHash: obj.serverHash,
-                                author: obj.author,
-                                time: obj.time
-                            };
-                        }),
-                        lastKnownHash: data.lastKnownHash
                     });
                 });
             });
@@ -1459,6 +1506,58 @@ define([
 
             sframeChan.on('EV_SHARE_OPEN', function (data) {
                 initSecureModal('share', data || {});
+            });
+
+            // Unsafe iframe
+            var UnsafeObject = {};
+            Utils.initUnsafeIframe = function (cfg, cb) {
+                if (!UnsafeObject.$iframe) {
+                    var config = {};
+                    config.addCommonRpc = addCommonRpc;
+                    config.modules = {
+                        Cryptpad: Cryptpad,
+                        SFrameChannel: SFrameChannel,
+                        Utils: Utils
+                    };
+                    UnsafeObject.$iframe = $('<iframe>', {id: 'sbox-unsafe-iframe'}).appendTo($('body')).hide();
+                    UnsafeObject.modal = UnsafeIframe.create(config);
+                }
+                UnsafeObject.modal.refresh(cfg, function (data) {
+                    console.error(data);
+                    cb(data);
+                });
+            };
+
+            // OO iframe
+            var OOIframeObject = {};
+            var initOOIframe = function (cfg, cb) {
+                if (!OOIframeObject.$iframe) {
+                    var config = {};
+                    config.addCommonRpc = addCommonRpc;
+                    config.modules = {
+                        Cryptpad: Cryptpad,
+                        SFrameChannel: SFrameChannel,
+                        Utils: Utils
+                    };
+                    OOIframeObject.$iframe = $('<iframe>', {id: 'sbox-oo-iframe'}).appendTo($('body')).hide();
+                    OOIframeObject.modal = OOIframe.create(config);
+                }
+                OOIframeObject.modal.refresh(cfg, function (data) {
+                    cb(data);
+                });
+            };
+
+            sframeChan.on('Q_OOIFRAME_OPEN', function (data, cb) {
+                if (!data) { return void cb(); }
+
+                // Extract unsafe data (href and password) before sending it to onlyoffice
+                var padData = data.padData;
+                delete data.padData;
+                var uid = Utils.Util.uid();
+                ooDownloadData[uid] = padData;
+                data.downloadId = uid;
+
+                initOOIframe(data || {}, cb);
             });
 
             sframeChan.on('Q_TEMPLATE_USE', function (data, cb) {
@@ -1749,6 +1848,22 @@ define([
                 });
             });
 
+            sframeChan.on('Q_COPY_VIEW_URL', function (data, cb) {
+                require(['/common/clipboard.js'], function (Clipboard) {
+                    var url = window.location.origin +
+                                Utils.Hash.hashToHref(hashes.viewHash, 'form');
+                    var success = Clipboard.copy(url);
+                    cb(success);
+                });
+            });
+            sframeChan.on('EV_OPEN_VIEW_URL', function () {
+                var url = Utils.Hash.hashToHref(hashes.viewHash, 'form');
+                var a = window.open(url);
+                if (!a) {
+                    sframeChan.event('EV_POPUP_BLOCKED');
+                }
+            });
+
             if (cfg.messaging) {
                 sframeChan.on('Q_CHAT_OPENPADCHAT', function (data, cb) {
                     Cryptpad.universal.execCommand({
@@ -1776,7 +1891,11 @@ define([
                     if (isChrome && getChromeVersion() === 68) {
                         sframeChan.whenReg('EV_CHROME_68', function () {
                             sframeChan.event("EV_CHROME_68");
-                            localStorage.CryptPad_chrome68 = "1";
+                            try {
+                                localStorage.CryptPad_chrome68 = "1";
+                            } catch (err) {
+                                console.error(err);
+                            }
                         });
                     }
                 }
@@ -1925,16 +2044,23 @@ define([
                     var cryptputCfg = $.extend(true, {}, rtConfig, {password: password});
                     if (data.templateContent) {
                         Cryptget.put(currentPad.hash, JSON.stringify(data.templateContent), function () {
-                            console.error(arguments);
                             startRealtime();
                             cb();
                         }, cryptputCfg);
                         return;
                     }
+                    if (Cryptpad.fromFileData && isOO && Cryptpad.fromFileData.href) {
+                        var d = Cryptpad.fromFileData;
+                        var _p = Utils.Hash.parsePadUrl(d.href);
+                        if (_p.type === currentPad.app) {
+                            data.template = d.href;
+                            templatePw = d.password;
+                        }
+                    }
                     if (data.template) {
                         // Start OO with a template...
                         // Cryptget and give href, password and content to inner
-                        if (parsed.type === "sheet") {
+                        if (isOO) {
                             var then = function () {
                                 startRealtime(rtConfig);
                                 cb();
@@ -1975,7 +2101,7 @@ define([
                         return;
                     }
                     // if we open a new code from a file
-                    if (Cryptpad.fromFileData) {
+                    if (Cryptpad.fromFileData && !isOO) {
                         Cryptpad.useFile(Cryptget, function (err) {
                             if (err) {
                                 // TODO: better messages in case of expired, deleted, etc.?
@@ -2004,6 +2130,8 @@ define([
 
             sframeChan.on('EV_BURN_AFTER_READING', function () {
                 startRealtime();
+                // feedback fails for users in noDrive mode
+                Utils.Feedback.send("BURN_AFTER_READING", Boolean(cfg.noDrive));
             });
 
             sframeChan.ready();

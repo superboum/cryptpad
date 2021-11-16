@@ -145,7 +145,7 @@ define([
         video.src = url;
     };
     Thumb.fromPdfBlob = function (blob, cb) {
-        require.config({paths: {'pdfjs-dist': '/common/pdfjs'}});
+        require.config({paths: {'pdfjs-dist': '/lib/pdfjs'}});
         require(['pdfjs-dist/build/pdf'], function (PDFJS) {
             var url = URL.createObjectURL(blob);
             var makeThumb = function (page) {
@@ -196,7 +196,7 @@ define([
         reader.readAsText(blob);
     };
     Thumb.fromBlob = function (blob, _cb) {
-        var cb = Util.once(_cb);
+        var cb = Util.once(Util.mkAsync(_cb));
         // The blob is already in memory, it should be super-fast to make a thumbnail
         // ==> 1s timeout
         setTimeout(function () {

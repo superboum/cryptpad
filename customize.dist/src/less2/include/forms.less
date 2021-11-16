@@ -112,11 +112,10 @@
         border-radius: 0;
         transition: none;
 
-        .fa, .cptools {
-            margin-right: 5px;
-        }
-        .cptools {
-            vertical-align: middle;
+        i, .fa, .cptools {
+            &:not(.nomargin) {
+                margin-right: 5px;
+            }
         }
 
         color: @cp_buttons-fg;

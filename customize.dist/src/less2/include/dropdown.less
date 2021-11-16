@@ -120,6 +120,14 @@
                     background-color: @cp_dropdown-bg-active;
                     color: @cp_dropdown-fg;
                 }
+
+                &.cp-app-hidden {
+                    display: none;
+                }
+                &.cp-app-disabled {
+                    cursor: not-allowed !important;
+                    opacity: 0.5;
+                }
             }
             &> span {
                 box-sizing: border-box;
@@ -151,6 +159,8 @@
                 margin: 5px 0px;
                 height: 1px;
                 background: @cp_dropdown-bg-active;
+                border: 0 !important;
+                border-top: 1px solid rgba(0,0,0,.1) !important;
                 & + hr {
                     display: none;
                 }

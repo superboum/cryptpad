@@ -45,6 +45,7 @@ define([
             'cp-support-list',
         ],
         'new': [ // Msg.support_cat_new
+            'cp-support-subscribe',
             'cp-support-language',
             'cp-support-form',
         ],
@@ -166,6 +167,26 @@ define([
         return $div;
     };
 
+    create['subscribe'] = function () {
+        if (!Pages.areSubscriptionsAllowed()) { return; }
+        var url = Pages.accounts.upgradeURL;
+        var accountsLink = h('a', {
+            href: url,
+        }, Messages.support_premiumLink);
+        $(accountsLink).click(function (ev) {
+            ev.preventDefault();
+            common.openURL(url);
+        });
+
+        return $(h('div.cp-support-subscribe.cp-sidebarlayout-element', [
+            h('div.alert.alert-info', [
+                Messages.support_premiumPriority,
+                ' ',
+                accountsLink,
+            ]),
+        ]));
+    };
+
     // Create a new tickets
     create['form'] = function () {
         var key = 'form';
@@ -272,19 +293,27 @@ define([
         APP.$rightside = $('<div>', {id: 'cp-sidebarlayout-rightside'}).appendTo(APP.$container);
         var sFrameChan = common.getSframeChannel();
         sFrameChan.onReady(waitFor());
+    }).nThen(function (waitFor) {
+        metadataMgr = common.getMetadataMgr();
+        privateData = metadataMgr.getPrivateData();
         common.getPinUsage(null, waitFor(function (err, data) {
             if (err) { return void console.error(err); }
             APP.pinUsage = data;
         }));
+        APP.teamsUsage = {};
+        Object.keys(privateData.teams).forEach(function (teamId) {
+            common.getPinUsage(teamId, waitFor(function (err, data) {
+                if (err) { return void console.error(err); }
+                APP.teamsUsage[teamId] = data;
+            }));
+        });
     }).nThen(function (/*waitFor*/) {
         createToolbar();
-        metadataMgr = common.getMetadataMgr();
-        privateData = metadataMgr.getPrivateData();
         common.setTabTitle(Messages.supportPage);
 
         APP.origin = privateData.origin;
         APP.readOnly = privateData.readOnly;
-        APP.support = Support.create(common, false, APP.pinUsage);
+        APP.support = Support.create(common, false, APP.pinUsage, APP.teamsUsage);
 
         // Content
         var $rightside = APP.$rightside;

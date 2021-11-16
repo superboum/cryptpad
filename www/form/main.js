@@ -51,7 +51,14 @@ define([
                         Cryptpad.setPadAttribute('answersChannel', data.channel, function () {});
                     });
                 });
-
+            });
+            sframeChan.on('EV_EXPORT_SHEET', function (data) {
+                if (!data || !Array.isArray(data.content)) { return; }
+                sessionStorage.CP_formExportSheet = JSON.stringify(data);
+                var href = Utils.Hash.hashToHref('', 'sheet');
+                var a = window.open(href);
+                if (!a) { sframeChan.event('EV_POPUP_BLOCKED'); }
+                delete sessionStorage.CP_formExportSheet;
             });
             var getAnonymousKeys = function (formSeed, channel) {
                 var array = Nacl.util.decodeBase64(formSeed + channel);
@@ -125,7 +132,7 @@ define([
                 var noDriveAnswered = false;
                 nThen(function (w) {
                     require([
-                        '/bower_components/chainpad-netflux/chainpad-netflux.js',
+                        'chainpad-netflux',
                         '/common/pinpad.js',
                     ], w(function (_CPNetflux, _Pinpad) {
                         CPNetflux = _CPNetflux;
@@ -176,7 +183,7 @@ define([
                         validateKey: keys.secondaryValidateKey,
                         owners: [myKeys.edPublic],
                         crypto: crypto,
-                        Cache: Utils.Cache
+                        //Cache: Utils.Cache // TODO enable cache for form responses when the cache stops evicting old answers
                     };
                     var results = {};
                     config.onError = function (info) {
@@ -221,6 +228,7 @@ define([
                                 delete results[parsed._proof.key];
                             }
                         }
+                        if (data.cantEdit && results[senderCurve]) { return; }
                         results[senderCurve] = {
                             msg: parsed,
                             hash: hash,
@@ -265,14 +273,22 @@ define([
                     }, function (obj) {
                         if (obj && obj.error) { return void cb(obj); }
                         var messages = obj.messages;
-                        var res = Utils.Crypto.Mailbox.openOwnSecretLetter(messages[0].msg, {
-                            validateKey: data.validateKey,
-                            ephemeral_private: Nacl.util.decodeBase64(answer.curvePrivate),
-                            my_private: Nacl.util.decodeBase64(myKeys.curvePrivate),
-                            their_public: Nacl.util.decodeBase64(data.publicKey)
-                        });
-                        res.content._isAnon = answer.anonymous;
-                        cb(JSON.parse(res.content));
+                        if (!messages.length) { return void cb(); }
+                        if (obj.lastKnownHash !== answer.hash) { return void cb(); }
+                        try {
+                            var res = Utils.Crypto.Mailbox.openOwnSecretLetter(messages[0].msg, {
+                                validateKey: data.validateKey,
+                                ephemeral_private: Nacl.util.decodeBase64(answer.curvePrivate),
+                                my_private: Nacl.util.decodeBase64(myKeys.curvePrivate),
+                                their_public: Nacl.util.decodeBase64(data.publicKey)
+                            });
+                            var parsed = JSON.parse(res.content);
+                            parsed._isAnon = answer.anonymous;
+                            parsed._time = messages[0].time;
+                            cb(parsed);
+                        } catch (e) {
+                            cb({error: e});
+                        }
                     });
 
                 });

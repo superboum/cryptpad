@@ -17,6 +17,7 @@ define([
     '/customize/application_config.js',
     '/lib/calendar/tui-calendar.min.js',
     '/calendar/export.js',
+    '/lib/datepicker/flatpickr.js',
 
     '/common/inner/share.js',
     '/common/inner/access.js',
@@ -46,6 +47,7 @@ define([
     AppConfig,
     Calendar,
     Export,
+    Flatpickr,
     Share, Access, Properties
     )
 {
@@ -169,9 +171,9 @@ define([
                 var obj = data.content[uid];
                 obj.title = obj.title || "";
                 obj.location = obj.location || "";
-                if (obj.isAllDay && obj.startDay) { obj.start = +new Date(obj.startDay); }
+                if (obj.isAllDay && obj.startDay) { obj.start = +Flatpickr.parseDate((obj.startDay)); }
                 if (obj.isAllDay && obj.endDay) {
-                    var endDate = new Date(obj.endDay);
+                    var endDate = Flatpickr.parseDate(obj.endDay);
                     endDate.setHours(23);
                     endDate.setMinutes(59);
                     endDate.setSeconds(59);
@@ -511,7 +513,8 @@ define([
                         options: types, // Entries displayed in the menu
                         isSelect: true,
                         initialValue: '.ics',
-                        common: common
+                        common: common,
+                        buttonCls: 'btn',
                     };
                     var $select = UIElements.createDropdown(dropdownConfig);
                     UI.prompt(Messages.exportPrompt,
@@ -564,7 +567,7 @@ define([
                 attributes: {
                     'class': 'fa fa-trash-o',
                 },
-                content: h('span', Messages.kanban_delete),
+                content: h('span', Messages.poll_remove),
                 action: function (e) {
                     e.stopPropagation();
                     var cal = APP.calendars[id];
@@ -584,8 +587,9 @@ define([
                         }, function (err) {
                             if (err) {
                                 console.error(err);
-                                UI.warn(Messages.error);
+                                return void UI.warn(Messages.error);
                             }
+                            renderCalendar();
                         });
                     });
                 }
@@ -720,7 +724,7 @@ define([
                 if (!calendars.length) { return; }
                 var team = privateData.teams[teamId];
                 var avatar = h('span.cp-avatar');
-                common.displayAvatar($(avatar), team.avatar, team.displayName);
+                common.displayAvatar($(avatar), team.avatar, team.displayName || team.name);
                 APP.$calendars.append(h('div.cp-calendar-team', [
                     avatar,
                     h('span.cp-name', {title: team.name}, team.name)

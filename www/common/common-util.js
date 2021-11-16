@@ -9,6 +9,15 @@
         return Array.prototype.slice.call(A, start, end);
     };
 
+    Util.shuffleArray = function (a) {
+        for (var i = a.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var tmp = a[i];
+            a[i] = a[j];
+            a[j] = tmp;
+        }
+    };
+
     Util.bake = function (f, args) {
         if (typeof(args) === 'undefined') { args = []; }
         if (!Array.isArray(args)) { args = [args]; }
@@ -66,7 +75,9 @@
                 handlers.push(cb);
             },
             unreg: function (cb) {
-                if (handlers.indexOf(cb) === -1) { throw new Error("Not registered"); }
+                if (handlers.indexOf(cb) === -1) {
+                    return void console.error("event handler was already unregistered");
+                }
                 handlers.splice(handlers.indexOf(cb), 1);
             },
             fire: function () {
@@ -150,6 +161,16 @@
             expect: expect,
             handle: handle,
         };
+    };
+
+    Util.inc = function (map, key, val) {
+        map[key] = (map[key] || 0) + (typeof(val) === 'number'? val: 1);
+    };
+
+    Util.values = function (obj) {
+        return Object.keys(obj).map(function (k) {
+            return obj[k];
+        });
     };
 
     Util.find = function (map, path) {
@@ -418,7 +439,7 @@
             var now = +new Date();
             if (last && now <= last + t) { return t - (now - last); }
             last = now;
-            f();
+            f.apply(null, Util.slice(arguments));
             return null;
         };
     };
@@ -554,13 +575,33 @@
         return false;
     };
 
+    // Tell if a file is spreadsheet from its metadata={title, fileType}
+    Util.isSpreadsheet = function (type, name) {
+        return (type &&
+                    (type === 'application/vnd.oasis.opendocument.spreadsheet' ||
+                    type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+                || (name && (name.endsWith('.xlsx') || name.endsWith('.ods')));
+    };
+    Util.isOfficeDoc = function (type, name) {
+        return (type &&
+                    (type === 'application/vnd.oasis.opendocument.text' ||
+                    type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'))
+                || (name && (name.endsWith('.docx') || name.endsWith('.odt')));
+    };
+    Util.isPresentation = function (type, name) {
+        return (type &&
+                    (type === 'application/vnd.oasis.opendocument.presentation' ||
+                    type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'))
+                || (name && (name.endsWith('.pptx') || name.endsWith('.odp')));
+    };
+
     Util.isValidURL = function (str) {
         var pattern = new RegExp('^(https?:\\/\\/)'+ // protocol
             '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|'+ // domain name
             '((\\d{1,3}\\.){3}\\d{1,3}))'+ // OR ip (v4) address
             '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*'+ // port and path
-            '(\\?[;&a-z\\d%_.~+=-]*)?'+ // query string
-            '(\\#[-a-z\\d_]*)?$','i'); // fragment locator
+            '(\\?[;&a-z\\d%_.~+=-]*)?'); // query string
+            //'(\\#[-a-z\\d_]*)?$','i'); // fragment locator
         return !!pattern.test(str);
     };
 
@@ -595,6 +636,49 @@
         return '#' + getColor().toString(16) +
                      getColor().toString(16) +
                      getColor().toString(16);
+    };
+
+    Util.checkRestrictedApp = function (app, AppConfig, earlyTypes, plan, loggedIn) {
+        // If this is an early access app, make sure this instance allows them
+        if (Array.isArray(earlyTypes) && earlyTypes.includes(app) && !AppConfig.enableEarlyAccess) {
+            return -2;
+        }
+
+        var premiumTypes = AppConfig.premiumTypes;
+        // If this is not a premium app, don't disable it
+        if (!Array.isArray(premiumTypes) || !premiumTypes.includes(app)) { return 2; }
+        // This is a premium app
+        // if you're not logged in, disable it
+        if (!loggedIn) { return -1; }
+        // if you're logged in, enable it only if you're a premium user
+        return plan ? 1 : 0;
+
+    };
+
+    /*  Chrome 92 dropped support for SharedArrayBuffer in cross-origin contexts
+        where window.crossOriginIsolated is false.
+
+        Their blog (https://blog.chromium.org/2021/02/restriction-on-sharedarraybuffers.html)
+        isn't clear about why they're doing this, but since it's related to site-isolation
+        it seems they're trying to do vague security things.
+
+        In any case, there seems to be a workaround where you can still create them
+        by using `new WebAssembly.Memory({shared: true, ...})` instead of `new SharedArrayBuffer`.
+
+        This seems unreliable, but it's better than not being able to export, since
+        we actively rely on postMessage between iframes and therefore can't afford
+        to opt for full isolation.
+    */
+    var supportsSharedArrayBuffers = function () {
+        try {
+            return Object.prototype.toString.call(new window.WebAssembly.Memory({shared: true, initial: 0, maximum: 0}).buffer) === '[object SharedArrayBuffer]';
+        } catch (err) {
+            console.error(err);
+        }
+        return false;
+    };
+    Util.supportsWasm = function () {
+        return !(typeof(Atomics) === "undefined" || !supportsSharedArrayBuffers() || typeof(WebAssembly) === 'undefined');
     };
 
     if (typeof(module) !== 'undefined' && module.exports) {
