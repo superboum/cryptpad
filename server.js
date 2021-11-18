@@ -69,7 +69,7 @@ var setHeaders = (function () {
             // backward compat for those who do not merge the new version of the config
             // when updating. This prevents endless spinner if someone clicks donate.
             // It also fixes the cross-domain iframe.
-            headers['Content-Security-Policy'] += "frame-ancestors *;";
+            //headers['Content-Security-Policy'] += "frame-ancestors *;";
         }
     } else {
         // use the default CSP headers constructed with your domain

@@ -44,7 +44,7 @@ define([
             };
             window.rc = requireConfig;
             window.apiconf = ApiConfig;
-            $('#sbox-oo-iframe').attr('src',
+            $('#sbox-oo-iframe').attr('sandbox', 'allow-scripts allow-popups allow-modals').attr('src',
                 ApiConfig.httpSafeOrigin + '/sheet/inner.html?' + requireConfig.urlArgs +
                     '#' + encodeURIComponent(JSON.stringify(req)));
 

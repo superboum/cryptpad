@@ -28,8 +28,8 @@ define([
             };
             window.rc = requireConfig;
             window.apiconf = ApiConfig;
-            $('#sbox-secure-iframe').attr('src',
-                ApiConfig.httpSafeOrigin + '/secureiframe/inner.html?' + requireConfig.urlArgs +
+            $('#sbox-secure-iframe').attr('sandbox', 'allow-scripts allow-popups allow-modals').attr('src',
+                ApiConfig.httpUnsafeOrigin + '/secureiframe/inner.html?' + requireConfig.urlArgs +
                     '#' + encodeURIComponent(JSON.stringify(req)));
 
             // This is a cheap trick to avoid loading sframe-channel in parallel with the
