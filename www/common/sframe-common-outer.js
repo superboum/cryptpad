@@ -34,8 +34,8 @@ define([
         }
 
 
-        var $i = $('<iframe>').attr('id', 'sbox-iframe').attr('sandbox', 'allow-scripts allow-popups allow-modals').attr('src',
-            ApiConfig.httpUnsafeOrigin + (pathname || window.location.pathname) + 'inner.html?' +
+        var $i = $('<iframe>').attr('id', 'sbox-iframe').attr('src',
+            ApiConfig.httpSafeOrigin + (pathname || window.location.pathname) + 'inner.html?' +
                 requireConfig.urlArgs + '#' + encodeURIComponent(JSON.stringify(req)));
         $i.attr('allowfullscreen', 'true');
         $('iframe-placeholder').after($i).remove();

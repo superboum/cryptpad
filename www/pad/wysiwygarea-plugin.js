@@ -39,9 +39,9 @@ define(['/api/config'], function (ApiConfig) {
             }
             
             // CryptPad
-            src = 'http://localhost:3000/pad/ckeditor-inner.html?' + ApiConfig.requireConf.urlArgs;
+            src = '/pad/ckeditor-inner.html?' + ApiConfig.requireConf.urlArgs;
 
-            iframe = CKEDITOR.dom.element.createFromHtml( '<iframe src="' + src + '" frameBorder="0" sandbox="allow-scripts"></iframe>' );
+            iframe = CKEDITOR.dom.element.createFromHtml( '<iframe src="' + src + '" frameBorder="0"></iframe>' );
             iframe.setStyles( { width: '100%', height: '100%' } );
             iframe.addClass( 'cke_wysiwyg_frame' ).addClass( 'cke_reset' );
             
