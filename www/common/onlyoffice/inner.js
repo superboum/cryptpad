@@ -1406,15 +1406,17 @@ define([
                             }
                             break;
                         case "cursor":
-                            cursor.updateCursor({
-                                type: "cursor",
-                                messages: [{
-                                    cursor: obj.cursor,
-                                    time: +new Date(),
-                                    user: myUniqueOOId,
-                                    useridoriginal: myOOId
-                                }]
-                            });
+                            if (cursor && cursor.updateCursor) {
+                                cursor.updateCursor({
+                                    type: "cursor",
+                                    messages: [{
+                                        cursor: obj.cursor,
+                                        time: +new Date(),
+                                        user: myUniqueOOId,
+                                        useridoriginal: myOOId
+                                    }]
+                                });
+                            }
                             break;
                         case "getLock":
                             handleLock(obj, send);
@@ -1501,6 +1503,37 @@ define([
                                 APP.onDocumentUnlock = undefined;
                             }
                             break;
+                        case 'openDocument':
+                            // When duplicating a slide, OO may ask the URLs of the images
+                            // in that slide
+                            var _obj = obj.message;
+                            if (_obj.c === "imgurls") {
+                                var _mediasSources = getMediasSources();
+                                var images = _obj.data || [];
+                                if (!Array.isArray(images)) { return; }
+                                var urls = images.map(function (name) {
+                                    var data = _mediasSources[name];
+                                    if (!data) { return; }
+                                    var media = mediasData[data.src];
+                                    if (!media) { return; }
+                                    return {
+                                        path: name,
+                                        url: media.blobUrl,
+                                    };
+                                }).filter(Boolean);
+                                send({
+                                    type: "documentOpen",
+                                    data: {
+                                        type: "imgurls",
+                                        status: "ok",
+                                        data: {
+                                            urls: urls,
+                                            error: 0
+                                        }
+                                    }
+                                });
+                            }
+                            break;
                     }
                 });
             });
@@ -1515,6 +1548,16 @@ define([
             });
             var type = common.getMetadataMgr().getPrivateData().ooType;
             var images = (e && window.frames[0].AscCommon.g_oDocumentUrls.urls) || {};
+
+            // Fix race condition which could drop images sometimes
+            // ==> make sure each image has a 'media/image_name.ext' entry as well
+            Object.keys(images).forEach(function (img) {
+                if (/^media\//.test(img)) { return; }
+                if (images['media/'+img]) { return; }
+                images['media/'+img] = images[img];
+            });
+
+            // Add theme images
             var theme = e && window.frames[0].AscCommon.g_image_loader.map_image_index;
             if (theme) {
                 Object.keys(theme).forEach(function (url) {
@@ -1523,6 +1566,7 @@ define([
                     }
                 });
             }
+
             sframeChan.query('Q_OO_CONVERT', {
                 data: data,
                 type: type,
@@ -1643,41 +1687,6 @@ define([
                         }
                     },
                     "onDocumentReady": function () {
-
-                        // Cancel migration from v4 et v5 if there is no charts
-                        if (APP.migrate && content.version === 4 && NEW_VERSION === 5) {
-                            var skip = false;
-                            // Skip if there is no chart in the document
-                            if (getEditor()) {
-                                var app = common.getMetadataMgr().getPrivateData().ooType;
-                                var d, hasChart;
-                                if (app === 'doc') {
-                                    d = getEditor().GetDocument();
-                                    hasChart = d.GetAllCharts().length;
-                                } else if (app === 'presentation') {
-                                    hasChart = d.Slides.some(function (slide) {
-                                        return slide.getDrawingObjects().some(function (obj) {
-                                            return obj instanceof getWindow().AscFormat.CChartSpace;
-                                        });
-                                    });
-                                }
-                                if (!hasChart) { skip = true; }
-                            }
-                            if (skip) {
-                                delete content.migration;
-                                content.version = NEW_VERSION;
-                                APP.onLocal();
-                                APP.realtime.onSettle(function () {
-                                    UI.removeModals();
-                                    UI.alert(Messages.oo_sheetMigration_complete, function () {
-                                        common.gotoURL();
-                                    });
-                                    return;
-                                });
-                                return;
-                            }
-                        }
-
                         evOnSync.fire();
                         var onMigrateRdy = Util.mkEvent();
                         onMigrateRdy.reg(function () {

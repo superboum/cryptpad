@@ -517,6 +517,7 @@ define([
                         if (!thumb64) { return; }
                         thumb = thumb64;
                     }));
+                    if (file.type === "application/pdf") { return; }
                     MT.preview(buffer, {
                         type: file.type,
                     }, void 0, w(function (err, el) {
@@ -697,7 +698,7 @@ define([
             var ctx = {
                 fileHost: privateData.fileHost,
                 get: common.getPad,
-                sframeChan: sframeChan,
+                sframeChan: common.getSframeChannel(),
                 cache: common.getCache()
             };
 
