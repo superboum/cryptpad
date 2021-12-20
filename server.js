@@ -279,6 +279,11 @@ var serveBroadcast = makeRouteCache(function (host) {
 app.get('/api/config', serveConfig);
 app.get('/api/broadcast', serveBroadcast);
 
+app.get('/api/updatelimit', function (req, res) {
+    Env.updateLimit();
+    return void res.send(200);
+});
+
 var four04_path = Path.resolve(__dirname + '/customize.dist/404.html');
 var custom_four04_path = Path.resolve(__dirname + '/customize/404.html');
 
