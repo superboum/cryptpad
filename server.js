@@ -281,7 +281,7 @@ app.get('/api/broadcast', serveBroadcast);
 
 app.get('/api/updatelimit', function (req, res) {
     Env.updateLimit();
-    return void res.send(200);
+    return void res.sendStatus(200);
 });
 
 var four04_path = Path.resolve(__dirname + '/customize.dist/404.html');
