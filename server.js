@@ -280,7 +280,7 @@ app.get('/api/config', serveConfig);
 app.get('/api/broadcast', serveBroadcast);
 
 app.get('/api/updatelimit', function (req, res) {
-    Env.updateLimit();
+    setTimeout(Env.updateLimit, 10000);
     return void res.sendStatus(200);
 });
 
