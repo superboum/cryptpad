@@ -1898,8 +1898,62 @@ define([
                 }
             };
 
+            var initFMImages = function () {
+                var fmConfigImages = {
+                    noHandlers: true,
+                    noStore: true,
+                    body: $('body'),
+                    onUploaded: function (ev, data) {
+                        if (!ev.callback) { return; }
+                        debug("Image uploaded at " + data.url);
+                        var parsed = Hash.parsePadUrl(data.url);
+                        if (parsed.type === 'file') {
+                            var secret = Hash.getSecrets('file', parsed.hash, data.password);
+                            var fileHost = privateData.fileHost || privateData.origin;
+                            var src = fileHost + Hash.getBlobPathFromHex(secret.channel);
+                            var key = Hash.encodeBase64(secret.keys.cryptKey);
+                            debug("Final src: " + src);
+                            ev.mediasSources[ev.name] = { name : ev.name, src : src, key : key };
+                        }
+                        ev.callback();
+                    }
+                };
+                APP.FMImages = common.createFileManager(fmConfigImages);
+            };
+
+
             APP.UploadImageFiles = function (files, type, id, jwt, cb) {
-                return void cb();
+                if (!APP.FMImages) { initFMImages(); }
+                var n = nThen;
+                var urls = [];
+                Array.prototype.forEach.call(files, function(file) {
+                    n = n(function (w) {
+                        var handleFileData = {
+                            name: file.name,
+                            mediasSources: getMediasSources(),
+                            callback: w(function() {
+                                APP.getImageURL(file.name, w(function (url) {
+                                    urls.push(url);
+                                }));
+                            }),
+                        };
+                        APP.FMImages.handleFile(file, handleFileData);
+                        return;
+                        var reader = new FileReader();
+                        reader.onload = function(e) {
+                            var blob = new Blob([new Uint8Array(e.target.result)], {
+                                type: file.type
+                            });
+                            console.error(blob);
+                            APP.FMImages.handleFile(blob, handleFileData);
+                        };
+                        reader.readAsArrayBuffer(file);
+                    }).nThen;
+                });
+                n(function () {
+                    console.error(urls);
+                    cb(undefined, urls);
+                });
             };
             APP.AddImage = function(cb1, cb2) {
                 APP.AddImageSuccessCallback = cb1;
@@ -1978,7 +2032,8 @@ Uncaught TypeError: Cannot read property 'calculatedType' of null
             };
 
             APP.loadingImage = 0;
-            APP.getImageURL = function(name, callback) {
+            APP.getImageURL = function(name, _callback) {
+                var callback = Util.mkAsync(_callback);
                 if (name && /^data:image/.test(name)) {
                     return void callback('');
                 }
@@ -2207,28 +2262,7 @@ Uncaught TypeError: Cannot read property 'calculatedType' of null
         };
 
         var x2tImportImages = function (images, callback) {
-            if (!APP.FMImages) {
-                var fmConfigImages = {
-                    noHandlers: true,
-                    noStore: true,
-                    body: $('body'),
-                    onUploaded: function (ev, data) {
-                        if (!ev.callback) { return; }
-                        debug("Image uploaded at " + data.url);
-                        var parsed = Hash.parsePadUrl(data.url);
-                        if (parsed.type === 'file') {
-                            var secret = Hash.getSecrets('file', parsed.hash, data.password);
-                            var fileHost = privateData.fileHost || privateData.origin;
-                            var src = fileHost + Hash.getBlobPathFromHex(secret.channel);
-                            var key = Hash.encodeBase64(secret.keys.cryptKey);
-                            debug("Final src: " + src);
-                            ev.mediasSources[ev.name] = { name : ev.name, src : src, key : key };
-                        }
-                        ev.callback();
-                    }
-                };
-                APP.FMImages = common.createFileManager(fmConfigImages);
-            }
+            if (!APP.FMImages) { initFMImages(); }
 
             // Import Images
             debug("Import Images");
