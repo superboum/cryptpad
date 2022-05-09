@@ -357,6 +357,7 @@ nThen(function (w) {
         if (Env.websocketPath) { return; }
 
         require("./lib/api").create(Env);
+        Env.Log.info("CRYPTPAD_STARTED", Env);
     });
 });
 
